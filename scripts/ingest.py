@@ -8,7 +8,9 @@ import argparse
 import hashlib
 import os
 import sys
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any, Iterable, Sequence
 
 from dotenv import load_dotenv
 
@@ -43,6 +45,94 @@ def discover_files(root: Path) -> list[Path]:
         if p.is_file() and p.suffix.lower() in SUPPORTED_EXTS:
             out.append(p)
     return out
+
+
+@dataclass
+class ChunkInput:
+    content: str
+    ord: int
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+def _max_chars() -> int:
+    return MAX_CHUNK_TOKENS * CHARS_PER_TOKEN
+
+
+def _overlap_chars() -> int:
+    return OVERLAP_TOKENS * CHARS_PER_TOKEN
+
+
+def _split_with_overlap(text: str) -> list[str]:
+    """Sliding window split for a single oversize block."""
+    max_chars = _max_chars()
+    overlap = _overlap_chars()
+    parts: list[str] = []
+    start = 0
+    n = len(text)
+    while start < n:
+        end = min(start + max_chars, n)
+        parts.append(text[start:end])
+        if end == n:
+            break
+        start = end - overlap
+    return parts
+
+
+def chunk_hybrid(elements: Sequence[Any]) -> list[ChunkInput]:
+    """Group elements into chunks. Title elements open new sections.
+    Within a section, accumulate up to MAX_CHUNK_TOKENS chars; if a single
+    block exceeds the limit, sliding-window split with OVERLAP_TOKENS overlap.
+    """
+    chunks: list[ChunkInput] = []
+    section_title: str | None = None
+    buffer: list[str] = []
+    max_chars = _max_chars()
+    ord_counter = 0
+
+    def flush() -> None:
+        nonlocal buffer, ord_counter
+        joined = "\n\n".join(s for s in buffer if s).strip()
+        if not joined:
+            buffer = []
+            return
+        if len(joined) <= max_chars:
+            chunks.append(
+                ChunkInput(
+                    content=joined,
+                    ord=ord_counter,
+                    metadata={"section_title": section_title},
+                )
+            )
+            ord_counter += 1
+        else:
+            for part in _split_with_overlap(joined):
+                if part.strip():
+                    chunks.append(
+                        ChunkInput(
+                            content=part,
+                            ord=ord_counter,
+                            metadata={"section_title": section_title},
+                        )
+                    )
+                    ord_counter += 1
+        buffer = []
+
+    for el in elements:
+        category = getattr(el, "category", None)
+        text_value = (getattr(el, "text", "") or "").strip()
+        if not text_value:
+            continue
+        if category == "Title":
+            flush()
+            section_title = text_value
+            continue
+        # Adding this element would overflow → flush first
+        prospective = sum(len(s) for s in buffer) + len(text_value) + 2 * len(buffer)
+        if buffer and prospective > max_chars:
+            flush()
+        buffer.append(text_value)
+    flush()
+    return chunks
 
 
 def load_env() -> None:
