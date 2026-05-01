@@ -1,6 +1,8 @@
 import { GoogleGenAI } from '@google/genai';
 import { requireEnv } from '@/lib/env';
 
+const TIMEOUT_MS = 30_000;
+
 let instance: GoogleGenAI | null = null;
 
 export function getGemini(): GoogleGenAI {
@@ -13,10 +15,18 @@ export function getGemini(): GoogleGenAI {
 export async function pingGemini(): Promise<string> {
   const ai = getGemini();
   const model = requireEnv('GEMINI_MODEL');
-  const res = await ai.models.generateContent({
-    model,
-    contents: 'ping',
-    config: { maxOutputTokens: 8 },
-  });
-  return res.text ?? '';
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
+  try {
+    const res = await ai.models.generateContent({
+      model,
+      contents: 'ping',
+      config: { maxOutputTokens: 8, abortSignal: controller.signal },
+    });
+    return res.text ?? '';
+  } finally {
+    clearTimeout(timer);
+  }
 }
