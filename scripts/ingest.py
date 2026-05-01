@@ -11,8 +11,9 @@ import re
 import sys
 from dataclasses import dataclass, field
 from datetime import date, datetime
+from enum import Enum
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Any, Callable, Iterable, Sequence
 
 from dotenv import load_dotenv
 
@@ -246,6 +247,23 @@ def extract_metadata(
             "parsed_at": datetime.utcnow().isoformat() + "Z",
         },
     }
+
+
+class IngestDecision(Enum):
+    PROCESS = "process"
+    SKIP = "skip"
+    REPLACE = "replace"
+
+
+def decide_action(
+    hash_: str,
+    force: bool,
+    lookup_by_hash: Callable[[str], str | None],
+) -> IngestDecision:
+    existing = lookup_by_hash(hash_)
+    if existing is None:
+        return IngestDecision.PROCESS
+    return IngestDecision.REPLACE if force else IngestDecision.SKIP
 
 
 def load_env() -> None:
