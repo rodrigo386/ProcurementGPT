@@ -494,13 +494,107 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     return p.parse_args(argv)
 
 
+def _process_one(
+    conn,
+    path: Path,
+    *,
+    force: bool,
+    dry_run: bool,
+    use_cache: bool,
+) -> str:
+    """Returns one of: 'new', 'skipped', 'forced', 'failed'."""
+    from unstructured.partition.auto import partition
+
+    h = content_hash(path)
+    decision = decide_action(
+        h,
+        force=force,
+        lookup_by_hash=lambda x: None if dry_run else lookup_by_hash(conn, x),
+    )
+    if decision == IngestDecision.SKIP:
+        return "skipped"
+
+    elements = partition(filename=str(path))
+    raw_md = elements_to_markdown(elements)
+    meta = extract_metadata(elements, path, raw_md=raw_md)
+    meta["metadata"]["content_hash"] = h
+    chunks = chunk_hybrid(elements)
+
+    if dry_run:
+        sys.stdout.write(
+            f"[dry-run] {path.name}: title={meta['title']!r} lang={meta['language']} "
+            f"chunks={len(chunks)}\n"
+        )
+        return "new"
+
+    embeddings = embed_batch([c.content for c in chunks], use_cache=use_cache)
+
+    with conn.transaction():
+        if decision == IngestDecision.REPLACE:
+            existing_id = lookup_by_hash(conn, h)
+            if existing_id:
+                delete_article(conn, existing_id)
+        article_id = insert_article(
+            conn,
+            title=meta["title"],
+            author=meta["author"],
+            language=meta["language"],
+            published_at=meta["published_at"],
+            raw_md=raw_md,
+            metadata=meta["metadata"],
+        )
+        insert_chunks(conn, article_id, chunks, embeddings)
+
+    return "forced" if decision == IngestDecision.REPLACE else "new"
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv if argv is not None else sys.argv[1:])
+
     if not args.dry_run:
         load_env()
-    # Pipeline body lands in later tasks.
-    print(f"args={args}")
-    return 0
+
+    if args.file:
+        if not args.file.exists():
+            sys.stderr.write(f"File not found: {args.file}\n")
+            return 1
+        files = [args.file]
+    else:
+        files = discover_files(args.path)
+
+    if not files:
+        sys.stdout.write("No files to ingest.\n")
+        return 0
+
+    from tqdm import tqdm
+
+    counters = {"new": 0, "skipped": 0, "forced": 0, "failed": 0}
+    conn = None
+    try:
+        if not args.dry_run:
+            conn = connect_db()
+        for p in tqdm(files, desc="ingesting"):
+            try:
+                status = _process_one(
+                    conn,
+                    p,
+                    force=args.force,
+                    dry_run=args.dry_run,
+                    use_cache=args.cache,
+                )
+                counters[status] += 1
+            except Exception as e:
+                sys.stderr.write(f"\n[error] {p.name}: {e}\n")
+                counters["failed"] += 1
+    finally:
+        if conn is not None:
+            conn.close()
+
+    sys.stdout.write(
+        f"Done. new={counters['new']} skipped={counters['skipped']} "
+        f"forced={counters['forced']} failed={counters['failed']}\n"
+    )
+    return 1 if counters["failed"] else 0
 
 
 if __name__ == "__main__":
