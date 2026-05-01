@@ -5,6 +5,7 @@ CLI: python scripts/ingest.py --path ./artigos/ [--force] [--dry-run] [--cache] 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import sys
 from pathlib import Path
@@ -22,6 +23,26 @@ EMBED_BATCH_SIZE = 128
 HTTP_TIMEOUT_SECONDS = 60
 RETRY_BACKOFFS = (2, 4, 8)
 SUPPORTED_EXTS = {".pdf", ".md", ".txt", ".html"}
+
+
+def content_hash(path: Path) -> str:
+    """SHA-256 hex of raw file bytes."""
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def discover_files(root: Path) -> list[Path]:
+    """Recursively list files under root with supported extensions."""
+    if not root.exists():
+        return []
+    out: list[Path] = []
+    for p in sorted(root.rglob("*")):
+        if p.is_file() and p.suffix.lower() in SUPPORTED_EXTS:
+            out.append(p)
+    return out
 
 
 def load_env() -> None:
