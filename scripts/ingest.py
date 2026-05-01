@@ -18,7 +18,10 @@ from pathlib import Path
 from typing import Any, Callable, Iterable, Sequence
 
 import httpx
+import psycopg
 from dotenv import load_dotenv
+from pgvector.psycopg import register_vector
+from urllib.parse import urlparse
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -368,6 +371,97 @@ def embed_batch(texts: list[str], use_cache: bool = False) -> list[list[float]]:
     return out  # type: ignore[return-value]
 
 
+def _db_dsn() -> str:
+    """Build a Postgres DSN from Supabase env vars.
+
+    Supabase Cloud exposes Postgres at db.<project-ref>.supabase.co:5432.
+    The service-role key is NOT the DB password; users must set
+    SUPABASE_DB_PASSWORD explicitly. We fail fast with a clear error if missing.
+    """
+    url = os.environ["NEXT_PUBLIC_SUPABASE_URL"]
+    parsed = urlparse(url)
+    host = parsed.hostname or ""
+    if not host.endswith(".supabase.co"):
+        raise RuntimeError(f"Unexpected Supabase URL host: {host}")
+    project_ref = host.split(".")[0]
+    password = os.environ.get("SUPABASE_DB_PASSWORD")
+    if not password:
+        raise RuntimeError(
+            "SUPABASE_DB_PASSWORD not set. Get it from Supabase Dashboard → "
+            "Project Settings → Database → Database password, then add to .env.local."
+        )
+    db_host = f"db.{project_ref}.supabase.co"
+    return f"postgresql://postgres:{password}@{db_host}:5432/postgres?sslmode=require"
+
+
+def connect_db():
+    """Open a psycopg connection with pgvector type registered."""
+    conn = psycopg.connect(_db_dsn())
+    register_vector(conn)
+    return conn
+
+
+def lookup_by_hash(conn, hash_: str) -> str | None:
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT id FROM articles WHERE metadata->>'content_hash' = %s LIMIT 1",
+            (hash_,),
+        )
+        row = cur.fetchone()
+        return str(row[0]) if row else None
+
+
+def delete_article(conn, article_id: str) -> None:
+    with conn.cursor() as cur:
+        cur.execute("DELETE FROM articles WHERE id = %s", (article_id,))
+
+
+def insert_article(
+    conn,
+    *,
+    title: str,
+    author: str | None,
+    language: str,
+    published_at: date | None,
+    raw_md: str,
+    metadata: dict[str, Any],
+) -> str:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO articles (title, author, language, published_at, raw_md, metadata)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            RETURNING id
+            """,
+            (title, author, language, published_at, raw_md, json.dumps(metadata)),
+        )
+        return str(cur.fetchone()[0])
+
+
+def insert_chunks(
+    conn,
+    article_id: str,
+    chunks: list[ChunkInput],
+    embeddings: list[list[float]],
+) -> None:
+    if len(chunks) != len(embeddings):
+        raise ValueError(
+            f"chunks/embeddings length mismatch: {len(chunks)} vs {len(embeddings)}"
+        )
+    rows = [
+        (article_id, c.ord, c.content, emb, json.dumps(c.metadata))
+        for c, emb in zip(chunks, embeddings)
+    ]
+    with conn.cursor() as cur:
+        cur.executemany(
+            """
+            INSERT INTO chunks (article_id, ord, content, embedding, metadata)
+            VALUES (%s, %s, %s, %s, %s)
+            """,
+            rows,
+        )
+
+
 def load_env() -> None:
     """Load .env.local from the project root. Fail fast if missing required vars."""
     env_file = PROJECT_ROOT / ".env.local"
@@ -378,6 +472,7 @@ def load_env() -> None:
         "VOYAGE_MODEL",
         "NEXT_PUBLIC_SUPABASE_URL",
         "SUPABASE_SERVICE_ROLE_KEY",
+        "SUPABASE_DB_PASSWORD",
     ]
     missing = [k for k in required if not os.environ.get(k)]
     if missing:
