@@ -7,8 +7,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import os
+import re
 import sys
 from dataclasses import dataclass, field
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Iterable, Sequence
 
@@ -133,6 +135,117 @@ def chunk_hybrid(elements: Sequence[Any]) -> list[ChunkInput]:
         buffer.append(text_value)
     flush()
     return chunks
+
+
+_DATE_PATTERNS = [
+    re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b"),
+    re.compile(r"\b(\d{2})/(\d{2})/(\d{4})\b"),
+]
+_AUTHOR_PATTERN = re.compile(
+    r"(?:Author|Autor|By|Por)[:\s]+([A-ZÀ-Ú][\w\.\-]+(?:[ \t]+[A-ZÀ-Ú][\w\.\-]+)*)",
+    re.MULTILINE,
+)
+
+
+def elements_to_markdown(elements: Iterable[Any]) -> str:
+    """Concatenate element texts in order with double-newline separators."""
+    parts: list[str] = []
+    for el in elements:
+        t = (getattr(el, "text", "") or "").strip()
+        if t:
+            parts.append(t)
+    return "\n\n".join(parts)
+
+
+def _detect_language(text: str) -> str:
+    from langdetect import detect, DetectorFactory
+    DetectorFactory.seed = 0
+    sample = text[:1000]
+    if not sample.strip():
+        return "pt"
+    try:
+        lang = detect(sample)
+    except Exception:
+        return "pt"
+    return lang if lang in {"pt", "en"} else "pt"
+
+
+def _detect_author(text: str) -> str | None:
+    head = text[:500]
+    m = _AUTHOR_PATTERN.search(head)
+    if not m:
+        return None
+    return m.group(1).strip()
+
+
+def _detect_date(text: str) -> date | None:
+    head = text[:500]
+    for pat in _DATE_PATTERNS:
+        m = pat.search(head)
+        if not m:
+            continue
+        groups = m.groups()
+        try:
+            if len(groups) == 3 and len(groups[0]) == 4:
+                return date(int(groups[0]), int(groups[1]), int(groups[2]))
+            if len(groups) == 3 and len(groups[2]) == 4:
+                return date(int(groups[2]), int(groups[1]), int(groups[0]))
+        except ValueError:
+            continue
+    return None
+
+
+def _title_from_filename(p: Path) -> str:
+    stem = p.stem
+    return re.sub(r"[_\-]+", " ", stem).strip()
+
+
+def _first_title(elements: Iterable[Any]) -> str | None:
+    """Return text of first Title element, but only if there's also non-Title content.
+    A document with only Title elements is likely all-text-no-heading (degenerate
+    unstructured output) — fall back to filename in that case.
+    """
+    first_title: str | None = None
+    has_other_content = False
+    for el in elements:
+        cat = getattr(el, "category", None)
+        text_value = (getattr(el, "text", "") or "").strip()
+        if not text_value:
+            continue
+        if cat == "Title" and first_title is None:
+            first_title = text_value
+        elif cat != "Title":
+            has_other_content = True
+    return first_title if has_other_content else None
+
+
+def extract_metadata(
+    elements: Sequence[Any],
+    path: Path,
+    raw_md: str,
+) -> dict[str, Any]:
+    """Return article fields plus a `metadata` jsonb dict."""
+    title = _first_title(elements) or _title_from_filename(path)
+    language = _detect_language(raw_md)
+    author = _detect_author(raw_md)
+    published_at = _detect_date(raw_md)
+    pages = None
+    for el in elements:
+        meta = getattr(el, "metadata", None)
+        page_no = getattr(meta, "page_number", None) if meta else None
+        if page_no:
+            pages = max(pages or 0, int(page_no))
+    return {
+        "title": title,
+        "language": language,
+        "author": author,
+        "published_at": published_at,
+        "metadata": {
+            "source_file": path.name,
+            "pages": pages,
+            "parsed_at": datetime.utcnow().isoformat() + "Z",
+        },
+    }
 
 
 def load_env() -> None:
