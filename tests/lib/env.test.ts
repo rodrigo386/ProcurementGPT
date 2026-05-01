@@ -1,17 +1,17 @@
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import { requireEnv, optionalEnv } from '@/lib/env';
 
+const ORIGINAL = process.env;
+
+beforeEach(() => {
+  process.env = { ...ORIGINAL };
+});
+
+afterEach(() => {
+  process.env = ORIGINAL;
+});
+
 describe('requireEnv', () => {
-  const ORIGINAL = process.env;
-
-  beforeEach(() => {
-    process.env = { ...ORIGINAL };
-  });
-
-  afterEach(() => {
-    process.env = ORIGINAL;
-  });
-
   it('returns the value when set', () => {
     process.env.FOO = 'bar';
     expect(requireEnv('FOO')).toBe('bar');
@@ -32,6 +32,11 @@ describe('optionalEnv', () => {
   it('returns undefined when missing', () => {
     delete process.env.NOT_SET;
     expect(optionalEnv('NOT_SET')).toBeUndefined();
+  });
+
+  it('returns undefined when value is an empty string', () => {
+    process.env.OPT = '';
+    expect(optionalEnv('OPT')).toBeUndefined();
   });
 
   it('returns the value when set', () => {
