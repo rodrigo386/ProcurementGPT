@@ -151,7 +151,7 @@ Decisão: RLS habilitado em todas as tabelas mas sem políticas. Significa que a
 ```
 # Google Generative AI
 GOOGLE_API_KEY=
-GEMINI_MODEL=gemini-3.1-flash
+GEMINI_MODEL=gemini-3.1-flash-lite-preview
 
 # Voyage AI
 VOYAGE_API_KEY=

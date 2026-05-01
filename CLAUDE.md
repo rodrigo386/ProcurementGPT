@@ -9,7 +9,7 @@ compras brasileiros (PT-BR primário, EN secundário).
 - Next.js 14 App Router + TypeScript strict
 - Tailwind + shadcn/ui (tema light/dark)
 - Supabase (Postgres + pgvector + Auth + Storage)
-- Google Generative AI SDK (Gemini 3.1 Flash para respostas E classificação)
+- Google Generative AI SDK (Gemini 3.1 Flash Lite (preview) para respostas E classificação)
 - Voyage AI para embeddings (`voyage-3-large`, 1024 dims)
 - Cohere Rerank 3 para reranking
 - Langfuse para observabilidade
