@@ -61,4 +61,32 @@ describe('voyage embed', () => {
     expect(result).toEqual([]);
     expect(mockFetch).not.toHaveBeenCalled();
   });
+
+  it('forwards inputType to Voyage when provided', async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ data: [{ embedding: [0.5] }] }), { status: 200 }),
+    );
+    globalThis.fetch = mockFetch as typeof fetch;
+
+    const { embed } = await import('@/lib/llm/voyage');
+    await embed(['q'], 'query');
+
+    const [, init] = mockFetch.mock.calls[0]!;
+    const body = JSON.parse((init as RequestInit).body as string);
+    expect(body).toEqual({ model: 'voyage-3-large', input: ['q'], input_type: 'query' });
+  });
+
+  it('omits input_type when inputType is not provided', async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ data: [{ embedding: [0.5] }] }), { status: 200 }),
+    );
+    globalThis.fetch = mockFetch as typeof fetch;
+
+    const { embed } = await import('@/lib/llm/voyage');
+    await embed(['q']);
+
+    const [, init] = mockFetch.mock.calls[0]!;
+    const body = JSON.parse((init as RequestInit).body as string);
+    expect(body).not.toHaveProperty('input_type');
+  });
 });
