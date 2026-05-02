@@ -1,30 +1,19 @@
-export default function Home() {
+import Link from 'next/link';
+import { Button } from '@/components/ui/button';
+
+export default function Landing() {
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center p-8">
-      <div className="max-w-2xl text-center space-y-6">
-        <h1 className="text-4xl font-bold text-primary">ProcurementGPT</h1>
-        <p className="text-lg text-muted-foreground">
-          Especialista em teorias de procurement — em construção.
-        </p>
-        <p className="text-sm text-muted-foreground">
-          Verifique a saúde dos serviços em{' '}
-          <a className="underline text-primary" href="/api/health">
-            /api/health
-          </a>
-          .
-        </p>
-        <footer className="pt-12 text-xs text-muted-foreground">
-          Produto da{' '}
-          <a
-            className="underline"
-            href="https://www.iagentics.com.br"
-            target="_blank"
-            rel="noreferrer"
-          >
-            IAgentics
-          </a>
-          .
-        </footer>
+    <main className="min-h-screen flex items-center justify-center bg-background">
+      <div className="text-center max-w-md px-6 space-y-6">
+        <div>
+          <h1 className="text-3xl font-semibold tracking-tight">ProcurementGPT</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Especialista em teorias e práticas de procurement, treinado em centenas de artigos.
+          </p>
+        </div>
+        <Button asChild>
+          <Link href="/login">Entrar</Link>
+        </Button>
       </div>
     </main>
   );
