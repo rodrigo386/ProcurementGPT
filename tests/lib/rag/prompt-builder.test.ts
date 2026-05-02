@@ -24,23 +24,38 @@ const ptClass: Classification = {
 const enClass: Classification = { ...ptClass, language: 'en' };
 
 describe('rag prompt-builder', () => {
-  it('builds numbered citation tokens for each chunk', async () => {
+  it('still returns sources array with numbers (kept for admin/debug channel)', async () => {
     const { buildPrompt } = await import('@/lib/rag/prompt-builder');
     const result = buildPrompt(
-      'O que é Kraljic?',
-      [
-        chunk('c1', 'Kraljic propôs em 1983...', 'A Matriz de Kraljic'),
-        chunk('c2', 'Aplica-se classificando itens...', 'A Matriz de Kraljic'),
-      ],
+      'q',
+      [chunk('c1', 'a', 'TitleA'), chunk('c2', 'b', 'TitleB')],
       ptClass,
     );
-    expect(result.user).toContain('[1]');
-    expect(result.user).toContain('[2]');
-    expect(result.user).toContain('A Matriz de Kraljic');
-    expect(result.user).toContain('Kraljic propôs em 1983');
     expect(result.sources.map((s) => s.number)).toEqual([1, 2]);
-    expect(result.sources[0]?.chunkId).toBe('c1');
-    expect(result.sources[1]?.chunkId).toBe('c2');
+    expect(result.sources[0]?.articleTitle).toBe('TitleA');
+  });
+
+  it('does NOT emit [N] tokens in the user prompt context block', async () => {
+    const { buildPrompt } = await import('@/lib/rag/prompt-builder');
+    const result = buildPrompt(
+      'q',
+      [chunk('c1', 'content one', 'TitleA'), chunk('c2', 'content two', 'TitleB')],
+      ptClass,
+    );
+    // Headings show only the title — no [1], [2] tokens
+    expect(result.user).toContain('TitleA');
+    expect(result.user).toContain('content one');
+    expect(result.user).not.toMatch(/\[\d+\]/);
+  });
+
+  it('system prompt instructs the model NOT to cite sources or numbers', async () => {
+    const { buildPrompt } = await import('@/lib/rag/prompt-builder');
+    const result = buildPrompt('q', [chunk('a', 'x', 'T')], ptClass);
+    expect(result.system.toLowerCase()).toContain('não mencione');
+    expect(result.system).toMatch(/\[\d+\]|colchetes/i);
+    // It should mention NOT to use brackets — confirm the prohibitive framing
+    const lower = result.system.toLowerCase();
+    expect(lower).toMatch(/não.*colchetes|sem.*colchetes/);
   });
 
   it('includes refusal instruction when chunks are empty', async () => {
@@ -49,7 +64,7 @@ describe('rag prompt-builder', () => {
     expect(result.system.toLowerCase()).toContain('não tem fonte');
     expect(result.system.toLowerCase()).toContain('não invente');
     expect(result.sources).toEqual([]);
-    expect(result.user).toContain('?'); // user query still in there
+    expect(result.user).toContain('?');
   });
 
   it('flips language hint to English when classification.language=en', async () => {
@@ -65,24 +80,11 @@ describe('rag prompt-builder', () => {
     expect(result.system).toMatch(/responda em português/i);
   });
 
-  it('aligns sources[i].number with the [N] tokens in the user prompt', async () => {
-    const { buildPrompt } = await import('@/lib/rag/prompt-builder');
-    const result = buildPrompt(
-      'q',
-      [chunk('a', 'A', 'TitleA'), chunk('b', 'B', 'TitleB'), chunk('c', 'C', 'TitleC')],
-      ptClass,
-    );
-    for (const src of result.sources) {
-      expect(result.user).toContain(`[${src.number}]`);
-    }
-  });
-
   it('includes the persona and 4-part response structure in system prompt', async () => {
     const { buildPrompt } = await import('@/lib/rag/prompt-builder');
     const result = buildPrompt('q', [chunk('a', 'A', 'T')], ptClass);
     expect(result.system).toMatch(/especialista/i);
     expect(result.system).toMatch(/procurement/i);
-    // Mentions the 4-part structure markers
     expect(result.system).toMatch(/resposta direta/i);
     expect(result.system).toMatch(/aplicação prática/i);
   });

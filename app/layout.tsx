@@ -6,7 +6,7 @@ import './globals.css';
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 
 export const metadata: Metadata = {
-  title: 'ProcurementGPT — IAgentics',
+  title: 'ProcurementGPT',
   description: 'Especialista em teorias de procurement.',
 };
 

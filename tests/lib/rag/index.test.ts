@@ -45,7 +45,7 @@ describe('rag runRag', () => {
     expect(result.classification.theory).toBe('kraljic');
     expect(result.sources).toHaveLength(1);
     expect(result.sources[0]?.chunkId).toBe('a');
-    expect(result.user).toContain('[1]');
+    expect(result.user).not.toMatch(/\[\d+\]/);
     expect(result.system).toMatch(/especialista/i);
     expect(result.debug.totalMs).toBeGreaterThanOrEqual(0);
     expect(typeof result.debug.classifyMs).toBe('number');
