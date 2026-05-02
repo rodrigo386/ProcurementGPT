@@ -13,13 +13,12 @@ export async function rerank(
       chunks.map((c) => c.content),
       topN,
     );
-    return hits
-      .map((h) => {
-        const src = chunks[h.index];
-        if (!src) return null;
-        return { ...src, rerankScore: h.relevanceScore };
-      })
-      .filter((c): c is RetrievedChunk => c !== null);
+    const results: RetrievedChunk[] = [];
+    for (const h of hits) {
+      const src = chunks[h.index];
+      if (src) results.push({ ...src, rerankScore: h.relevanceScore });
+    }
+    return results;
   } catch (err) {
     console.warn('[rag/reranker] Cohere failed, falling back to RRF order:', err);
     return chunks.slice(0, topN);
