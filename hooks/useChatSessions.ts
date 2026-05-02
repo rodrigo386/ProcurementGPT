@@ -20,6 +20,10 @@ export type UseChatSessions = {
   updateMessages: (messages: ChatMessage[]) => void;
 };
 
+/**
+ * @deprecated Sub-projeto 6b moved to DB-backed sessions for authenticated users
+ * via `useChatSessionsRemote`. Kept for tests + potential offline mode.
+ */
 export function useChatSessions(): UseChatSessions {
   const [sessions, setSessions] = useState<StoredSession[]>(() => {
     if (typeof window === 'undefined') return [];

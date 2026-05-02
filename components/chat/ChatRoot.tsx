@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useChatSessions } from '@/hooks/useChatSessions';
+import { useChatSessionsRemote as useChatSessions } from '@/hooks/useChatSessionsRemote';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { ChatSession } from './ChatSession';
@@ -25,7 +25,7 @@ function ChatRootMounted() {
   const sessionsApi = useChatSessions();
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  if (!sessionsApi.current) {
+  if (!sessionsApi.currentId) {
     return <div className="h-screen bg-background" />;
   }
 
