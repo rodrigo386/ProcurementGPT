@@ -19,9 +19,10 @@ const Body = z
       )
       .min(1),
   })
-  .refine((b) => b.messages[b.messages.length - 1]!.role === 'user', {
-    message: 'last message must be from user',
-  });
+  .refine(
+    (b) => b.messages.length > 0 && b.messages[b.messages.length - 1]!.role === 'user',
+    { message: 'last message must be from user' },
+  );
 
 export async function POST(req: Request): Promise<Response> {
   let parsed;
