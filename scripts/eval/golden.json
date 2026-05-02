@@ -1,0 +1,62 @@
+[
+  {
+    "id": "kraljic-definition",
+    "query": "O que é a matriz de Kraljic?",
+    "expected_titles": ["A Matriz de Kraljic"],
+    "intent": "definition"
+  },
+  {
+    "id": "kraljic-quadrants",
+    "query": "Quais são os quatro quadrantes da matriz de Kraljic?",
+    "expected_titles": ["A Matriz de Kraljic"],
+    "intent": "definition"
+  },
+  {
+    "id": "kraljic-application",
+    "query": "Como aplicar a matriz de Kraljic em um varejo de alimentos?",
+    "expected_titles": ["A Matriz de Kraljic"],
+    "intent": "application"
+  },
+  {
+    "id": "strategic-sourcing-definition",
+    "query": "What is strategic sourcing?",
+    "expected_titles": ["Strategic Sourcing Fundamentals"],
+    "intent": "definition"
+  },
+  {
+    "id": "strategic-sourcing-principles",
+    "query": "What are the core principles of strategic sourcing?",
+    "expected_titles": ["Strategic Sourcing Fundamentals"],
+    "intent": "definition"
+  },
+  {
+    "id": "strategic-sourcing-application",
+    "query": "How should we implement strategic sourcing in a manufacturing firm?",
+    "expected_titles": ["Strategic Sourcing Fundamentals"],
+    "intent": "application"
+  },
+  {
+    "id": "porter-five-forces",
+    "query": "Explique as cinco forças de Porter",
+    "expected_titles": ["Porter's Five Forces"],
+    "intent": "definition"
+  },
+  {
+    "id": "porter-vs-kraljic",
+    "query": "Qual a diferença entre Porter e Kraljic em compras estratégicas?",
+    "expected_titles": ["A Matriz de Kraljic", "Porter's Five Forces"],
+    "intent": "comparison"
+  },
+  {
+    "id": "porter-application",
+    "query": "Como usar as forças de Porter para avaliar um setor?",
+    "expected_titles": ["Porter's Five Forces"],
+    "intent": "application"
+  },
+  {
+    "id": "smalltalk-greeting",
+    "query": "oi, tudo bem?",
+    "expected_titles": [],
+    "intent": "smalltalk"
+  }
+]

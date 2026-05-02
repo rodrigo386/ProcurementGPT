@@ -13,7 +13,8 @@
     "db:migrate": "supabase db push",
     "db:types": "supabase gen types typescript --linked > lib/db/database.types.ts",
     "format": "prettier --write .",
-    "rag:query": "tsx scripts/rag-query.ts"
+    "rag:query": "tsx scripts/rag-query.ts",
+    "rag:eval": "tsx scripts/eval/run.ts"
   },
   "dependencies": {
     "@google/genai": "^1.51.0",
