@@ -11,6 +11,13 @@ export function ChatRoot() {
   const sessionsApi = useChatSessions();
   const [drawerOpen, setDrawerOpen] = useState(false);
 
+  // useChatSessions starts empty during SSR / first paint and hydrates from
+  // localStorage in a useEffect. Render an empty shell until current exists
+  // to avoid passing undefined into ChatSession.
+  if (!sessionsApi.current) {
+    return <div className="h-screen bg-background" />;
+  }
+
   return (
     <div className="flex h-screen bg-background text-foreground">
       <div className="hidden md:flex">
