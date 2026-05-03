@@ -187,9 +187,10 @@ LANGFUSE_BASE_URL=https://cloud.langfuse.com
 - `Button asChild` do shadcn base-nova não existe — para link estilizado como botão, usar `<Link>` com classes Tailwind
 - `DropdownMenuTrigger asChild` do shadcn base-nova também não existe (wraps `@base-ui/react/menu` MenuTrigger) — estilizar o trigger direto via `className`
 - Restaurar localStorage de conversas após login — sub-projeto 6b decidiu **discard** (DB é a única fonte de verdade quando logado)
-- `pdf-parse@2.x` tem API incompatível (class-based, depende de pdfjs-dist com workers) — fixado em `1.1.1` (default-export simples). Importar dinamicamente dentro da função (`(await import('pdf-parse')).default`) para evitar o self-test que dispara no import top-level
+- `pdf-parse@2.x` tem API incompatível (class-based, depende de pdfjs-dist com workers) — fixado em `1.1.1` (default-export simples). Importar **inner path** `pdf-parse/lib/pdf-parse.js` (NÃO `pdf-parse`) — o `index.js` do pacote roda um self-test no module load que tenta ler `test/data/05-versions-space.pdf` e dispara `ENOENT`. Dinâmico ou top-level, qualquer import de `'pdf-parse'` direto vai quebrar
 - Não awaitar `fetch('/api/admin/ingest/run/[jobId]')` no cliente — o ponto do padrão fire-and-forget é deixar a função do Vercel rodar até o fim mesmo após a request original retornar
 - Em `/admin/*` API routes ou server components, usar `requireAdmin()` + retornar **404** (não 403) para non-admins — não revelar a existência do endpoint
+- A view `profiles_with_email` foi criada com `security_invoker = true` (queries rodam como o caller). Authed users **não** têm SELECT em `auth.users`, então qualquer query do view via cookie-aware client falha com `permission denied for table users`. Usar `getServerSupabase()` (service-role) em routes admin-gated que precisam ler dela
 - Bucket `ingest-uploads` é privado, com policy admin-only que restringe inserts ao próprio `auth.uid()` folder — não tentar fazer upload para outro user_id
 
 ## Fluxo de chat end-to-end (sub-projetos 1-6b)
