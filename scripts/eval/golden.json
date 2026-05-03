@@ -1,62 +1,32 @@
 [
-  {
-    "id": "kraljic-definition",
-    "query": "O que é a matriz de Kraljic?",
-    "expected_titles": ["A Matriz de Kraljic"],
-    "intent": "definition"
-  },
-  {
-    "id": "kraljic-quadrants",
-    "query": "Quais são os quatro quadrantes da matriz de Kraljic?",
-    "expected_titles": ["A Matriz de Kraljic"],
-    "intent": "definition"
-  },
-  {
-    "id": "kraljic-application",
-    "query": "Como aplicar a matriz de Kraljic em um varejo de alimentos?",
-    "expected_titles": ["A Matriz de Kraljic"],
-    "intent": "application"
-  },
-  {
-    "id": "strategic-sourcing-definition",
-    "query": "What is strategic sourcing?",
-    "expected_titles": ["Strategic Sourcing Fundamentals"],
-    "intent": "definition"
-  },
-  {
-    "id": "strategic-sourcing-principles",
-    "query": "What are the core principles of strategic sourcing?",
-    "expected_titles": ["Strategic Sourcing Fundamentals"],
-    "intent": "definition"
-  },
-  {
-    "id": "strategic-sourcing-application",
-    "query": "How should we implement strategic sourcing in a manufacturing firm?",
-    "expected_titles": ["Strategic Sourcing Fundamentals"],
-    "intent": "application"
-  },
-  {
-    "id": "porter-five-forces",
-    "query": "Explique as cinco forças de Porter",
-    "expected_titles": ["Porter's Five Forces"],
-    "intent": "definition"
-  },
-  {
-    "id": "porter-vs-kraljic",
-    "query": "Qual a diferença entre Porter e Kraljic em compras estratégicas?",
-    "expected_titles": ["A Matriz de Kraljic", "Porter's Five Forces"],
-    "intent": "comparison"
-  },
-  {
-    "id": "porter-application",
-    "query": "Como usar as forças de Porter para avaliar um setor?",
-    "expected_titles": ["Porter's Five Forces"],
-    "intent": "application"
-  },
-  {
-    "id": "smalltalk-greeting",
-    "query": "oi, tudo bem?",
-    "expected_titles": [],
-    "intent": "smalltalk"
-  }
+  { "id": "kraljic-definition", "intent": "definition", "query": "O que é a matriz de Kraljic?", "expected_titles": ["A Matriz de Kraljic"] },
+  { "id": "kraljic-quadrants", "intent": "definition", "query": "Quais são os quatro quadrantes da matriz de Kraljic?", "expected_titles": ["A Matriz de Kraljic"] },
+  { "id": "kraljic-application", "intent": "application", "query": "Como aplicar a matriz de Kraljic em um varejo de alimentos?", "expected_titles": ["A Matriz de Kraljic"] },
+  { "id": "kraljic-comparison", "intent": "comparison", "query": "Qual a diferença entre a matriz de Kraljic e uma análise ABC?", "expected_titles": ["A Matriz de Kraljic"] },
+  { "id": "kraljic-edge", "intent": "edge", "query": "A matriz de Kraljic é útil para itens de baixo volume e baixo risco?", "expected_titles": ["A Matriz de Kraljic"] },
+
+  { "id": "strategic-sourcing-definition", "intent": "definition", "query": "What is strategic sourcing?", "expected_titles": ["Strategic Sourcing Fundamentals"] },
+  { "id": "strategic-sourcing-principles", "intent": "definition", "query": "What are the core principles of strategic sourcing?", "expected_titles": ["Strategic Sourcing Fundamentals"] },
+  { "id": "strategic-sourcing-application", "intent": "application", "query": "How should we implement strategic sourcing in a manufacturing firm?", "expected_titles": ["Strategic Sourcing Fundamentals"] },
+  { "id": "strategic-sourcing-comparison", "intent": "comparison", "query": "How is strategic sourcing different from tactical purchasing?", "expected_titles": ["Strategic Sourcing Fundamentals"] },
+  { "id": "strategic-sourcing-edge", "intent": "edge", "query": "Does strategic sourcing apply to non-strategic spend categories?", "expected_titles": ["Strategic Sourcing Fundamentals"] },
+
+  { "id": "porter-five-forces", "intent": "definition", "query": "Explique as cinco forças de Porter", "expected_titles": ["Porter's Five Forces"] },
+  { "id": "porter-application-pt", "intent": "application", "query": "Como usar as forças de Porter para avaliar um setor?", "expected_titles": ["Porter's Five Forces"] },
+  { "id": "porter-en-definition", "intent": "definition", "query": "What are Porter's five forces?", "expected_titles": ["Porter's Five Forces"] },
+  { "id": "porter-en-application", "intent": "application", "query": "How do I apply Porter's five forces to procurement strategy?", "expected_titles": ["Porter's Five Forces"] },
+  { "id": "porter-edge", "intent": "edge", "query": "As cinco forças de Porter ainda são relevantes na economia digital?", "expected_titles": ["Porter's Five Forces"] },
+
+  { "id": "sustentaveis-definition", "intent": "definition", "query": "O que são compras sustentáveis?", "expected_titles": ["Apostila Compras Sustentáveis"] },
+  { "id": "sustentaveis-iso26000", "intent": "definition", "query": "O que diz a ISO 26000 sobre responsabilidade social?", "expected_titles": ["Apostila Compras Sustentáveis"] },
+  { "id": "sustentaveis-iso20400", "intent": "comparison", "query": "Qual a diferença entre ISO 26000 e ISO 20400?", "expected_titles": ["Apostila Compras Sustentáveis"] },
+  { "id": "sustentaveis-rfp", "intent": "application", "query": "Como integrar critérios de sustentabilidade em um RFP?", "expected_titles": ["Apostila Compras Sustentáveis"] },
+  { "id": "sustentaveis-circular", "intent": "edge", "query": "O que são compras circulares?", "expected_titles": ["Apostila Compras Sustentáveis"] },
+
+  { "id": "smalltalk-pt", "intent": "smalltalk", "query": "oi, tudo bem?", "expected_titles": [] },
+  { "id": "smalltalk-en", "intent": "smalltalk", "query": "hi, how's it going?", "expected_titles": [] },
+
+  { "id": "porter-vs-kraljic", "intent": "comparison", "query": "Qual a diferença entre Porter e Kraljic em compras estratégicas?", "expected_titles": ["A Matriz de Kraljic", "Porter's Five Forces"] },
+  { "id": "sustentaveis-vs-strategic", "intent": "comparison", "query": "How does sustainable procurement relate to strategic sourcing?", "expected_titles": ["Apostila Compras Sustentáveis", "Strategic Sourcing Fundamentals"] },
+  { "id": "kraljic-vs-sustentaveis", "intent": "comparison", "query": "Como a matriz de Kraljic se conecta com compras sustentáveis?", "expected_titles": ["A Matriz de Kraljic", "Apostila Compras Sustentáveis"] }
 ]
