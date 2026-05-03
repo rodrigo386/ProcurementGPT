@@ -34,10 +34,11 @@ removida em 2026-05-02). Audiência: gestores de compras brasileiros (PT-BR prim
 | 5 | `chat-ui-complete` | `/chat` SPA cliente: split-pane sidebar + ChatRoot/ChatSession (key remount), markdown rendering, theme toggle (system/light/dark), mobile drawer, hero + 4 suggestion cards, Composer (Enter sends, Stop button) |
 | 6a | `auth-rls-complete` | Supabase Auth invite-only (email/senha + Google OAuth). `middleware.ts` gates `/chat` + `/admin`. Páginas: `/login`, `/forgot-password`, `/reset-password`, `/auth/callback`. `lib/auth.ts` (getCurrentUser/requireUser/getProfile). `UserRow` no rodapé do sidebar. Migration 0003 (`profiles` + RLS + `is_admin()` + trigger) |
 | 6b | `conversation-persistence-complete` | DB-only conversation history (localStorage retired for authed). `useChatSessionsRemote` drop-in for `useChatSessions`. Migration 0004 (`sessions` table com 4 RLS owner-only policies, FK cascade para LGPD erasure mecânica) |
+| 6c | `admin-ui-complete` | `/admin` (sidebar + sub-routes `/admin/{users,articles,ingest}`) gated por `requireAdmin()` → 404 (não 403) para non-admins. Port TS da pipeline de ingest (`pdf-parse@1.1.1` + `mammoth` + chunker/metadata/parser/pipeline) roda como Node route via fire-and-forget + 2s polling, sobrevive ao fechamento da aba. Migration 0005: `ingestion_jobs` + RLS, `profiles_with_email` view, `admin_user_session_counts()` RPC, `profiles_admin_update`/`articles_admin_delete` policies. Storage bucket `ingest-uploads` com policy admin-only path-scoped. Auto-cleanup de jobs `done` > 7d inline no `/jobs`. UserRow mostra link "Admin" só para admins |
 
-**Pendente:** sub-projeto 6c (Admin UI), sub-projeto 7 (Langfuse + full eval framework + golden CI gate).
+**Pendente:** sub-projeto 7 (Langfuse + full eval framework + golden CI gate).
 
-**Test count atual:** 89 vitest, 23 pytest, typecheck zero erros.
+**Test count atual:** 126 vitest, 23 pytest, typecheck zero erros.
 
 ## Estrutura de pastas
 ```
@@ -53,6 +54,19 @@ removida em 2026-05-02). Audiência: gestores de compras brasileiros (PT-BR prim
   /forgot-password/page.tsx             (reset link request)
   /reset-password/page.tsx              (set new password)
   /auth/callback/route.ts               (PKCE code exchange)
+  /admin
+    layout.tsx                          (requireAdmin → 404; sidebar shell)
+    page.tsx                            (redirect to /admin/users)
+    /users/page.tsx                     (server: profiles_with_email + admin_user_session_counts → <UsersTable/>)
+    /articles/page.tsx                  (mounts <ArticlesSplitView/>)
+    /ingest/page.tsx                    (mounts <IngestRoot/>)
+  /api/admin
+    /users/route.ts                     (Node: GET list, POST invite, PATCH role)
+    /articles/[id]/route.ts             (Node: DELETE, chunks cascade)
+    /ingest/upload/route.ts             (Node: multipart → Storage + job row)
+    /ingest/run/[jobId]/route.ts        (Node, maxDuration=300: runs runPipeline)
+    /ingest/jobs/route.ts               (Node: GET list, inline cleanup + stale sweep)
+    /ingest/retry/[jobId]/route.ts      (Node, maxDuration=300: reset error → re-run)
 /lib
   /rag
     types.ts                            (Classification, RetrievedChunk, SourceRef, ChatMessage, RagResult)
@@ -71,13 +85,23 @@ removida em 2026-05-02). Audiência: gestores de compras brasileiros (PT-BR prim
     voyage.ts                           (embed com inputType opcional)
     cohere.ts                           (rerank wrapper)
   env.ts                                (requireEnv — server-side only; client modules use literal process.env)
-  auth.ts                               (getCurrentUser, requireUser, getProfile, NotAuthenticated)
+  auth.ts                               (getCurrentUser, requireUser, getProfile, NotAuthenticated, requireAdmin, NotAdmin)
   chat-storage.ts                       (@deprecated; deriveTitle ainda usado)
+  /db
+    storage.ts                          (upload/download/delete wrappers para bucket ingest-uploads)
+  /ingest                               (TS port da pipeline; scripts/ingest.py mantido como legacy)
+    types.ts                            (JobStatus, JobStage, IngestJob)
+    hash.ts                             (sha256 helper)
+    parser.ts                           (pdf-parse@1.1.1 + mammoth + fs.readFile, <500-char OCR guard)
+    chunker.ts                          (paragraph + sliding-window, MAX 3200, OVERLAP 400)
+    metadata.ts                         (title/author/language/date heurísticas)
+    pipeline.ts                         (runPipeline orquestrador end-to-end)
 /middleware.ts                          (gates /chat + /admin via Supabase session check)
 /components
   /chat (ChatRoot, ChatSession, Sidebar, Header, EmptyState, MessageList, Message, Composer)
-  /auth (LoginForm, ForgotPasswordForm, ResetPasswordForm, UserRow)
-  /ui (shadcn base-nova: button, textarea, scroll-area, sheet, tooltip)
+  /auth (LoginForm, ForgotPasswordForm, ResetPasswordForm, UserRow — admin link visível só para admins)
+  /admin (AdminSidebar, UsersTable, InviteUserDialog, ArticlesSplitView, ArticleDetail, ConfirmDelete, IngestRoot, Dropzone, JobCard, JobsLive, JobsRecent)
+  /ui (shadcn base-nova: button, textarea, scroll-area, sheet, tooltip, dialog, input, dropdown-menu, table)
   theme-provider.tsx
 /hooks
   useChatSessions.ts                    (@deprecated — localStorage; mantido para testes)
@@ -94,6 +118,7 @@ removida em 2026-05-02). Audiência: gestores de compras brasileiros (PT-BR prim
   00000000000002_rag_rpc.sql            (match_chunks, search_chunks_fts)
   00000000000003_profiles_and_rls.sql   (profiles + is_admin() + trigger + RLS para articles/chunks)
   00000000000004_sessions.sql           (sessions table + 4 owner-only RLS policies)
+  00000000000005_admin_ui.sql           (ingestion_jobs + 4 admin RLS, profiles_admin_update, articles_admin_delete, profiles_with_email view, admin_user_session_counts RPC)
 /docs/superpowers
   /specs (1 design doc por sub-projeto)
   /plans (1 implementation plan por sub-projeto)
@@ -160,7 +185,12 @@ LANGFUSE_BASE_URL=https://cloud.langfuse.com
 - Em código `'use client'`, usar `requireEnv(name)` (dinâmico) para `NEXT_PUBLIC_*` — Next.js só inlina referências literais `process.env.NEXT_PUBLIC_FOO`. Use literal access em browser modules (ver `lib/db/supabase-browser.ts`)
 - Usar `useChatSessions` (localStorage, deprecated) para usuários autenticados — usar `useChatSessionsRemote` (DB-backed)
 - `Button asChild` do shadcn base-nova não existe — para link estilizado como botão, usar `<Link>` com classes Tailwind
+- `DropdownMenuTrigger asChild` do shadcn base-nova também não existe (wraps `@base-ui/react/menu` MenuTrigger) — estilizar o trigger direto via `className`
 - Restaurar localStorage de conversas após login — sub-projeto 6b decidiu **discard** (DB é a única fonte de verdade quando logado)
+- `pdf-parse@2.x` tem API incompatível (class-based, depende de pdfjs-dist com workers) — fixado em `1.1.1` (default-export simples). Importar dinamicamente dentro da função (`(await import('pdf-parse')).default`) para evitar o self-test que dispara no import top-level
+- Não awaitar `fetch('/api/admin/ingest/run/[jobId]')` no cliente — o ponto do padrão fire-and-forget é deixar a função do Vercel rodar até o fim mesmo após a request original retornar
+- Em `/admin/*` API routes ou server components, usar `requireAdmin()` + retornar **404** (não 403) para non-admins — não revelar a existência do endpoint
+- Bucket `ingest-uploads` é privado, com policy admin-only que restringe inserts ao próprio `auth.uid()` folder — não tentar fazer upload para outro user_id
 
 ## Fluxo de chat end-to-end (sub-projetos 1-6b)
 ```
@@ -185,4 +215,20 @@ usuário não logado → / (landing) → /login → middleware passa → /chat
 
 ## Bootstrap admin
 - Único admin atual: `rgoalves@gmail.com` (auth.users id `16fab8f7-a960-48b4-903d-b590e476b51b`), role='admin' em profiles.
-- Para promover outro usuário (após convite via dashboard): `update profiles set role='admin' where id=(select id from auth.users where email='<email>')`.
+- Para promover outro usuário: pode usar `/admin/users` (sub-projeto 6c) — clicar no menu ⋯ da row → "Promover a admin". Ou via SQL: `update profiles set role='admin' where id=(select id from auth.users where email='<email>')`.
+
+## Fluxo de ingestão via UI (sub-projeto 6c)
+```
+admin → /admin/ingest → drop PDF/DOCX/TXT no Dropzone (validação client: MIME, ≤10 MB)
+                                ↓
+   POST /api/admin/ingest/upload (multipart, Node) → Storage upload + ingestion_jobs row (status=queued)
+                                ↓
+   POST /api/admin/ingest/run/[jobId] (Node, fire-and-forget, sem await do cliente; Vercel mantém função viva)
+                                ↓
+   runPipeline: parsing → chunking → embedding (Voyage, batch 16) → inserting → done
+                                ↓
+   GET /api/admin/ingest/jobs (polling 2s) → IngestRoot atualiza JobsLive/JobsRecent
+                                ↓
+   Dedup hit (sha256 == metadata->>'content_hash' existente): stage='deduplicated', chunks_count=0
+   Erro: status='error', error_message preservada, storage file mantido (B2 retry)
+```
