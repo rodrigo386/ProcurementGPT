@@ -29,7 +29,7 @@ Entregar:
 - Migration `00000000000005_admin_ui.sql`: tabela `ingestion_jobs`, política `profiles_admin_update`, política `articles_admin_delete`, view `profiles_with_email`, helper `admin_user_session_counts()`, políticas Storage para bucket `ingest-uploads`.
 - Bucket Supabase Storage `ingest-uploads` (criado manualmente via dashboard, documentado).
 - Link "Admin" no `UserRow` da sidebar do `/chat`, visível só para admins.
-- Total de 28 testes vitest novos. Pytest 23/23 inalterado.
+- Total de 37 testes vitest novos. Pytest 23/23 inalterado.
 
 **Não-objetivos** (delegados ou cortados):
 - Bulk operations (selecionar N artigos para deletar) — adicionar quando houver demanda.
@@ -503,7 +503,7 @@ Documented in plan as explicit task steps:
 
 ## 8. Testing
 
-### 8.1 Unit (vitest, 28 new)
+### 8.1 Unit (vitest, 37 new)
 
 | File | # | Covers |
 |---|---|---|
@@ -524,7 +524,7 @@ Documented in plan as explicit task steps:
 
 **Mocks:** Supabase clients (browser + server + service), Voyage/Cohere/Gemini, `pdf-parse`, `mammoth`, Storage. Pipeline tests use Buffer fixtures. No live network.
 
-Suite total: 89 + 28 = **117 vitest**. Pytest 23/23 unchanged.
+Suite total: 89 + 37 = **126 vitest**. Pytest 23/23 unchanged.
 
 ### 8.2 Smoke (manual, after migration applied)
 
@@ -538,7 +538,7 @@ Suite total: 89 + 28 = **117 vitest**. Pytest 23/23 unchanged.
 8. Drop a corrupted PDF → error card with Retry → click Retry → still errors.
 9. `/admin/articles` → click row → right panel → Excluir → confirm → row gone, chunks count → 0.
 10. Test cleanup: manually `update ingestion_jobs set finished_at = now() - interval '8 days' where status = 'done'` then hit `/admin/ingest` → row vanishes from list.
-11. Regressions: `npm test` 117/117, typecheck zero, pytest 23/23, `/api/health` 200, `/chat` works for both admin and regular user.
+11. Regressions: `npm test` 126/126, typecheck zero, pytest 23/23, `/api/health` 200, `/chat` works for both admin and regular user.
 
 ## 9. Critérios de sucesso
 
@@ -552,7 +552,7 @@ Suite total: 89 + 28 = **117 vitest**. Pytest 23/23 unchanged.
 8. Closing the browser tab mid-ingest does not kill the job (verify by reopening 30s later, status updated to done).
 9. Done jobs disappear from list after 7 days; error jobs persist.
 10. Non-admin user cannot reach `/admin/*` (404) or `/api/admin/*` (404).
-11. `npm test` ≥ 117; typecheck zero errors; pytest 23/23 unchanged; `/api/health` 200.
+11. `npm test` ≥ 126; typecheck zero errors; pytest 23/23 unchanged; `/api/health` 200.
 12. Tag `admin-ui-complete` on the final commit.
 
 ## 10. Decisões e justificativas
