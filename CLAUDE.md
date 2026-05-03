@@ -20,8 +20,9 @@ removida em 2026-05-02). Audiência: gestores de compras brasileiros (PT-BR prim
 2. **Resposta fundamentada na base** — o contexto recuperado é injetado no prompt para fundamentar a resposta; o modelo NÃO menciona fontes, IDs, ou números entre colchetes para o usuário (decisão 2026-05-02). Sem fonte na base, dizer explicitamente "não tenho fonte sobre isso"
 3. **Streaming SSE** — resposta começa a aparecer em <3s
 4. **Edge Runtime** nas rotas de chat, Node runtime na ingestão Python
-5. **LGPD compliance** — logs sem PII, opt-in para histórico (sub-projeto 6)
+5. **LGPD compliance** — logs sem PII, opt-in para histórico (sub-projeto 6); Langfuse usa Supabase UUID pseudonimizado como `userId`, nunca email
 6. **Custos sob controle** — cache de embeddings, Gemini Flash Lite para todas as chamadas LLM
+7. **Observabilidade obrigatória** — `/api/chat` abre uma Langfuse trace por turno; cada estágio do RAG é um span. Sem isto, retrieval e prompt iteram às cegas
 
 ## Status — sub-projetos completos
 
@@ -35,10 +36,11 @@ removida em 2026-05-02). Audiência: gestores de compras brasileiros (PT-BR prim
 | 6a | `auth-rls-complete` | Supabase Auth invite-only (email/senha + Google OAuth). `middleware.ts` gates `/chat` + `/admin`. Páginas: `/login`, `/forgot-password`, `/reset-password`, `/auth/callback`. `lib/auth.ts` (getCurrentUser/requireUser/getProfile). `UserRow` no rodapé do sidebar. Migration 0003 (`profiles` + RLS + `is_admin()` + trigger) |
 | 6b | `conversation-persistence-complete` | DB-only conversation history (localStorage retired for authed). `useChatSessionsRemote` drop-in for `useChatSessions`. Migration 0004 (`sessions` table com 4 RLS owner-only policies, FK cascade para LGPD erasure mecânica) |
 | 6c | `admin-ui-complete` | `/admin` (sidebar + sub-routes `/admin/{users,articles,ingest}`) gated por `requireAdmin()` → 404 (não 403) para non-admins. Port TS da pipeline de ingest (`pdf-parse@1.1.1` + `mammoth` + chunker/metadata/parser/pipeline) roda como Node route via fire-and-forget + 2s polling, sobrevive ao fechamento da aba. Migration 0005: `ingestion_jobs` + RLS, `profiles_with_email` view, `admin_user_session_counts()` RPC, `profiles_admin_update`/`articles_admin_delete` policies. Storage bucket `ingest-uploads` com policy admin-only path-scoped. Auto-cleanup de jobs `done` > 7d inline no `/jobs`. UserRow mostra link "Admin" só para admins |
+| 7 | `langfuse-eval-complete` | Langfuse instrumentation em `/api/chat` (Edge): trace `chat.turn` por turno com 6 spans aninhados (condense, classify, retrieve, rerank, build-prompt, generate), `userId` = Supabase UUID, `sessionId` = sessions.id, flush em onFinish/error/abort. Wrapper `lib/observability/langfuse.ts` com no-op fallback quando keys ausentes. Eval expandido para 25 pares (5 ângulos × 4 artigos + 2 smalltalk + 3 comparison) com batched embed (1 chamada Voyage para todas as queries). CI workflow GitHub Actions roda typecheck + vitest + pytest + rag:eval em PR + push para main, falha se `recall@5 < 0.85`. Eval traces tagged `env:ci` agrupados em sessão por commit. Baseline atual: recall@5 = 1.00 (18/18 scoreable na corpus de 4 artigos). |
 
-**Pendente:** sub-projeto 7 (Langfuse + full eval framework + golden CI gate).
+**Milestone 1 closed.** Próximo: definir milestone 2 com base em uso real (traces em Langfuse).
 
-**Test count atual:** 126 vitest, 23 pytest, typecheck zero erros.
+**Test count atual:** 143 vitest, 23 pytest, typecheck zero erros. CI gate: `recall@5 ≥ 0.85` em PR + push main.
 
 ## Estrutura de pastas
 ```
@@ -84,6 +86,9 @@ removida em 2026-05-02). Audiência: gestores de compras brasileiros (PT-BR prim
     gemini.ts                           (one-shot wrapper, @google/genai)
     voyage.ts                           (embed com inputType opcional)
     cohere.ts                           (rerank wrapper)
+  /observability                        (NEW sub-projeto 7)
+    types.ts                            (Trace, Span, TraceLevel)
+    langfuse.ts                         (startTrace + flushAsync, no-op fallback quando keys absent)
   env.ts                                (requireEnv — server-side only; client modules use literal process.env)
   auth.ts                               (getCurrentUser, requireUser, getProfile, NotAuthenticated, requireAdmin, NotAdmin)
   chat-storage.ts                       (@deprecated; deriveTitle ainda usado)
@@ -119,6 +124,9 @@ removida em 2026-05-02). Audiência: gestores de compras brasileiros (PT-BR prim
   00000000000003_profiles_and_rls.sql   (profiles + is_admin() + trigger + RLS para articles/chunks)
   00000000000004_sessions.sql           (sessions table + 4 owner-only RLS policies)
   00000000000005_admin_ui.sql           (ingestion_jobs + 4 admin RLS, profiles_admin_update, articles_admin_delete, profiles_with_email view, admin_user_session_counts RPC)
+  00000000000006_sessions_user_id_default.sql (forward-fix: ALTER sessions.user_id SET DEFAULT auth.uid())
+/.github/workflows
+  ci.yml                                (typecheck + vitest + pytest + rag:eval em PR + push main; artifact + PR comment)
 /docs/superpowers
   /specs (1 design doc por sub-projeto)
   /plans (1 implementation plan por sub-projeto)
@@ -157,7 +165,7 @@ NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 SUPABASE_DB_PASSWORD=          # para o ingest.py via psycopg
-LANGFUSE_PUBLIC_KEY=           # opcional até sub-projeto 7
+LANGFUSE_PUBLIC_KEY=           # ativo desde sub-projeto 7; quando vazio, wrapper retorna no-op trace
 LANGFUSE_SECRET_KEY=
 LANGFUSE_BASE_URL=https://cloud.langfuse.com
 ```
@@ -168,7 +176,7 @@ LANGFUSE_BASE_URL=https://cloud.langfuse.com
 - `npm run typecheck` — `tsc --noEmit`
 - `npm run db:migrate` — aplicar migrations Supabase via CLI (ou aplicar manualmente via psycopg/dashboard)
 - `npm run rag:query "<pergunta>"` — CLI ad-hoc de retrieval
-- `npm run rag:eval` — eval offline (recall@5, MRR, latência)
+- `npm run rag:eval` — eval offline 25 pares (recall@5, MRR, latência); exit 1 se recall@5 < 0.85; escreve `scripts/eval/results.json`
 - `python scripts/ingest.py --path ./artigos/` — ingerir artigos
 - `python scripts/ingest.py --file <arquivo>` — ingerir 1 arquivo
 - `python scripts/ingest.py --dry-run --path ./artigos/` — preview sem DB
@@ -192,8 +200,13 @@ LANGFUSE_BASE_URL=https://cloud.langfuse.com
 - Em `/admin/*` API routes ou server components, usar `requireAdmin()` + retornar **404** (não 403) para non-admins — não revelar a existência do endpoint
 - A view `profiles_with_email` foi criada com `security_invoker = true` (queries rodam como o caller). Authed users **não** têm SELECT em `auth.users`, então qualquer query do view via cookie-aware client falha com `permission denied for table users`. Usar `getServerSupabase()` (service-role) em routes admin-gated que precisam ler dela
 - Bucket `ingest-uploads` é privado, com policy admin-only que restringe inserts ao próprio `auth.uid()` folder — não tentar fazer upload para outro user_id
+- Chamar `runRag` em código cliente diretamente — sempre via `/api/chat` para garantir trace + auth
+- Importar `langfuse` top-level em rotas Edge — usar `await import('langfuse')` dentro de `startTrace` (a wrapper já faz isso). Top-level pode quebrar Edge cold-start
+- Esquecer `await flushAsync()` no `onFinish`/catch do `streamText` — Edge runtime mata a função quando a response termina, perdendo traces silenciosamente
+- Pular o batching de embeds no eval — 25 chamadas seriais à Voyage seriam ~9 min (3 RPM throttle); batched é <30s
+- Mudar `RECALL_THRESHOLD` em `scripts/eval/run.ts` sem atualizar a spec + CLAUDE.md (o número precisa ser auditável depois)
 
-## Fluxo de chat end-to-end (sub-projetos 1-6b)
+## Fluxo de chat end-to-end (sub-projetos 1-7)
 ```
 usuário não logado → / (landing) → /login → middleware passa → /chat
                                                                  ↓
@@ -203,15 +216,21 @@ usuário não logado → / (landing) → /login → middleware passa → /chat
                                                                  ↓
                                               ChatSession (key=currentId) → useChat (AI SDK)
                                                                  ↓
-                              POST /api/chat (Edge, anon-callable, stateless)
+                                          POST /api/chat (Edge) { messages, sessionId }
                                                                  ↓
-                              condenseQuery (multi-turn) → runRag (classifier → retriever → reranker → prompt-builder)
+                  startTrace({ name:'chat.turn', userId, sessionId, tags:['env:production'] })
                                                                  ↓
-                                                streamText (Gemini Flash via @ai-sdk/google)
+                              condense span → condenseQuery → runRag (parentTrace=trace)
+                                                                 ↓
+                              4 spans nested: classify → retrieve → rerank → build-prompt
+                                                                 ↓
+                              generate span → streamText (Gemini Flash via @ai-sdk/google)
                                                                  ↓
                                                        SSE de volta ao cliente
                                                                  ↓
-                                             onFinish → useChatSessionsRemote.updateMessages → DB
+              onFinish → end generate span + trace.end + await flushAsync (NÃO esquecer!)
+                                                                 ↓
+                                             useChatSessionsRemote.updateMessages → DB
 ```
 
 ## Bootstrap admin
