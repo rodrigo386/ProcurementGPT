@@ -95,4 +95,37 @@ describe('rag runRag', () => {
     expect(result.sources).toEqual([]);
     expect(result.system.toLowerCase()).toContain('não tem fonte');
   });
+
+  it('opens spans on a provided parentTrace for classify, retrieve, rerank, build-prompt', async () => {
+    vi.doMock('@/lib/rag/classifier', () => ({
+      classify: vi.fn().mockResolvedValue({
+        theory: 'kraljic', intent: 'definition', language: 'pt', needsRetrieval: true,
+      }),
+    }));
+    const retrieved = [chunk('a'), chunk('b')];
+    vi.doMock('@/lib/rag/retriever', () => ({
+      retrieve: vi.fn().mockResolvedValue(retrieved),
+    }));
+    vi.doMock('@/lib/rag/reranker', () => ({
+      rerank: vi.fn().mockResolvedValue([{ ...retrieved[0]!, rerankScore: 0.9 }]),
+    }));
+
+    const spans: Array<{ name: string; ended: boolean }> = [];
+    const trace = {
+      span: (name: string) => {
+        const entry = { name, ended: false };
+        spans.push(entry);
+        return { end: () => { entry.ended = true; } };
+      },
+      end: () => {},
+      setMetadata: () => {},
+      setTag: () => {},
+    };
+
+    const { runRag } = await import('@/lib/rag');
+    await runRag('o que é Kraljic?', { parentTrace: trace });
+    const names = spans.map((s) => s.name);
+    expect(names).toEqual(['classify', 'retrieve', 'rerank', 'build-prompt']);
+    expect(spans.every((s) => s.ended)).toBe(true);
+  });
 });
