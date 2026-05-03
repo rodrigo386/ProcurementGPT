@@ -46,3 +46,6 @@ scripts/tests/__pycache__/
 # supabase
 supabase/.branches
 supabase/.temp
+
+# superpowers brainstorm artifacts
+.superpowers/
