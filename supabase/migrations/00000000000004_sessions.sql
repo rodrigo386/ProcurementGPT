@@ -2,7 +2,10 @@
 
 create table sessions (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references auth.users(id) on delete cascade,
+  -- default auth.uid() so the browser hook can `insert({})` and have user_id
+  -- auto-filled from the JWT; without this the RLS check
+  -- (with check user_id = auth.uid()) fails because user_id is NULL.
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
   title text not null default 'Nova conversa',
   messages jsonb not null default '[]'::jsonb,
   created_at timestamptz not null default now(),
