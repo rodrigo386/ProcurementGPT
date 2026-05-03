@@ -14,9 +14,20 @@ function mockBrowser(email: string | null) {
   vi.doMock('@/lib/db/supabase-browser', () => ({
     supabaseBrowser: () => ({
       auth: {
-        getUser: vi.fn().mockResolvedValue({ data: { user: email ? { email } : null }, error: null }),
+        getUser: vi.fn().mockResolvedValue({
+          data: { user: email ? { id: 'u1', email } : null },
+          error: null,
+        }),
         signOut,
       },
+      // UserRow also queries profiles to decide whether to render the Admin link
+      from: vi.fn().mockReturnValue({
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () => ({ data: { role: 'user' }, error: null }),
+          }),
+        }),
+      }),
     }),
   }));
   const refresh = vi.fn();
