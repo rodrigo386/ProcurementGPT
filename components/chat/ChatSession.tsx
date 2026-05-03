@@ -22,6 +22,7 @@ export function ChatSession({ session, onMessagesChange }: Props) {
   const { messages, input, setInput, handleSubmit, isLoading, stop } = useChat({
     api: '/api/chat',
     id: session.id,
+    body: { sessionId: session.id },
     initialMessages: session.messages.map((m, i) => ({
       id: `${session.id}-${i}`,
       role: m.role,
