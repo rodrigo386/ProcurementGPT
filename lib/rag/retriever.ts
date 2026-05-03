@@ -7,6 +7,8 @@ export type RetrieveOptions = {
   ftsK?: number;
   rrfK?: number;
   outK?: number;
+  /** Internal hook for eval batching: skip embed call if vector already known. */
+  preEmbedded?: number[];
 };
 
 const DEFAULTS = { vectorK: 20, ftsK: 20, rrfK: 60, outK: 30 } as const;
@@ -33,7 +35,7 @@ export async function retrieve(
   const { vectorK, ftsK, rrfK, outK } = { ...DEFAULTS, ...opts };
   const supabase = getServerSupabase();
 
-  const [embedding] = await embed([query], 'query');
+  const embedding = opts.preEmbedded ?? (await embed([query], 'query'))[0];
   if (!embedding) return [];
 
   const [vecRes, ftsRes] = await Promise.all([
