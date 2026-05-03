@@ -17,16 +17,16 @@
   { "id": "porter-en-application", "intent": "application", "query": "How do I apply Porter's five forces to procurement strategy?", "expected_titles": ["Porter's Five Forces"] },
   { "id": "porter-edge", "intent": "edge", "query": "As cinco forças de Porter ainda são relevantes na economia digital?", "expected_titles": ["Porter's Five Forces"] },
 
-  { "id": "sustentaveis-definition", "intent": "definition", "query": "O que são compras sustentáveis?", "expected_titles": ["Apostila Compras Sustentáveis"] },
-  { "id": "sustentaveis-iso26000", "intent": "definition", "query": "O que diz a ISO 26000 sobre responsabilidade social?", "expected_titles": ["Apostila Compras Sustentáveis"] },
-  { "id": "sustentaveis-iso20400", "intent": "comparison", "query": "Qual a diferença entre ISO 26000 e ISO 20400?", "expected_titles": ["Apostila Compras Sustentáveis"] },
-  { "id": "sustentaveis-rfp", "intent": "application", "query": "Como integrar critérios de sustentabilidade em um RFP?", "expected_titles": ["Apostila Compras Sustentáveis"] },
-  { "id": "sustentaveis-circular", "intent": "edge", "query": "O que são compras circulares?", "expected_titles": ["Apostila Compras Sustentáveis"] },
+  { "id": "sustentaveis-definition", "intent": "definition", "query": "O que são compras sustentáveis?", "expected_titles": ["Compras Sustentáveis"] },
+  { "id": "sustentaveis-iso26000", "intent": "definition", "query": "O que diz a ISO 26000 sobre responsabilidade social?", "expected_titles": ["Compras Sustentáveis"] },
+  { "id": "sustentaveis-iso20400", "intent": "comparison", "query": "Qual a diferença entre ISO 26000 e ISO 20400?", "expected_titles": ["Compras Sustentáveis"] },
+  { "id": "sustentaveis-rfp", "intent": "application", "query": "Como integrar critérios de sustentabilidade em um RFP?", "expected_titles": ["Compras Sustentáveis"] },
+  { "id": "sustentaveis-circular", "intent": "edge", "query": "O que são compras circulares?", "expected_titles": ["Compras Sustentáveis"] },
 
   { "id": "smalltalk-pt", "intent": "smalltalk", "query": "oi, tudo bem?", "expected_titles": [] },
   { "id": "smalltalk-en", "intent": "smalltalk", "query": "hi, how's it going?", "expected_titles": [] },
 
   { "id": "porter-vs-kraljic", "intent": "comparison", "query": "Qual a diferença entre Porter e Kraljic em compras estratégicas?", "expected_titles": ["A Matriz de Kraljic", "Porter's Five Forces"] },
-  { "id": "sustentaveis-vs-strategic", "intent": "comparison", "query": "How does sustainable procurement relate to strategic sourcing?", "expected_titles": ["Apostila Compras Sustentáveis", "Strategic Sourcing Fundamentals"] },
-  { "id": "kraljic-vs-sustentaveis", "intent": "comparison", "query": "Como a matriz de Kraljic se conecta com compras sustentáveis?", "expected_titles": ["A Matriz de Kraljic", "Apostila Compras Sustentáveis"] }
+  { "id": "sustentaveis-vs-strategic", "intent": "comparison", "query": "How does sustainable procurement relate to strategic sourcing?", "expected_titles": ["Compras Sustentáveis", "Strategic Sourcing Fundamentals"] },
+  { "id": "kraljic-vs-sustentaveis", "intent": "comparison", "query": "Como a matriz de Kraljic se conecta com compras sustentáveis?", "expected_titles": ["A Matriz de Kraljic", "Compras Sustentáveis"] }
 ]

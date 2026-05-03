@@ -49,3 +49,8 @@ supabase/.temp
 
 # superpowers brainstorm artifacts
 .superpowers/
+
+# dev server log + ad-hoc smoke artifacts
+.dev-srv.log
+chat.tmp
+scripts/eval/results.json
