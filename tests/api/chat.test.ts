@@ -1,5 +1,14 @@
 import { describe, expect, it, beforeEach, vi } from 'vitest';
 
+// Shared NOOP trace returned by all startTrace mocks
+const NOOP_SPAN = { end: vi.fn() };
+const NOOP_TRACE = {
+  span: vi.fn(() => NOOP_SPAN),
+  end: vi.fn(),
+  setMetadata: vi.fn(),
+  setTag: vi.fn(),
+};
+
 beforeEach(() => {
   process.env.GOOGLE_API_KEY = 'test-key';
   process.env.GEMINI_MODEL = 'gemini-test';
@@ -63,6 +72,12 @@ describe('POST /api/chat', () => {
   });
 
   it('orchestrates condenser, runRag, streamText with correct shapes', async () => {
+    vi.doMock('@/lib/auth', () => ({ getCurrentUser: vi.fn().mockResolvedValue({ id: 'user-123' }) }));
+    vi.doMock('@/lib/observability/langfuse', () => ({
+      startTrace: vi.fn().mockResolvedValue(NOOP_TRACE),
+      flushAsync: vi.fn().mockResolvedValue(undefined),
+    }));
+
     const condenseSpy = vi.fn().mockResolvedValue('standalone-query');
     vi.doMock('@/lib/rag/condenser', () => ({ condenseQuery: condenseSpy }));
 
@@ -102,7 +117,8 @@ describe('POST /api/chat', () => {
 
     expect(res.status).toBe(200);
     expect(condenseSpy).toHaveBeenCalledWith(messages);
-    expect(runRagSpy).toHaveBeenCalledWith('standalone-query');
+    // runRag now receives (standalone, { parentTrace }) — check first arg only
+    expect(runRagSpy).toHaveBeenCalledWith('standalone-query', expect.objectContaining({ parentTrace: NOOP_TRACE }));
 
     const streamArgs = streamTextSpy.mock.calls[0]![0];
     expect(streamArgs.system).toBe('SYSTEM_PROMPT');
@@ -123,6 +139,11 @@ describe('POST /api/chat', () => {
   });
 
   it('returns 500 when runRag throws', async () => {
+    vi.doMock('@/lib/auth', () => ({ getCurrentUser: vi.fn().mockResolvedValue(null) }));
+    vi.doMock('@/lib/observability/langfuse', () => ({
+      startTrace: vi.fn().mockResolvedValue(NOOP_TRACE),
+      flushAsync: vi.fn().mockResolvedValue(undefined),
+    }));
     vi.doMock('@/lib/rag/condenser', () => ({ condenseQuery: vi.fn().mockResolvedValue('q') }));
     vi.doMock('@/lib/rag', () => ({
       runRag: vi.fn().mockRejectedValue(new Error('boom')),

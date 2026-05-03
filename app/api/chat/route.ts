@@ -5,6 +5,9 @@ import { requireEnv } from '@/lib/env';
 import { runRag } from '@/lib/rag';
 import { condenseQuery } from '@/lib/rag/condenser';
 import type { ChatMessage } from '@/lib/rag/types';
+import { startTrace, flushAsync } from '@/lib/observability/langfuse';
+import { getCurrentUser } from '@/lib/auth';
+import type { TraceLevel } from '@/lib/observability/types';
 
 export const runtime = 'edge';
 
@@ -18,6 +21,7 @@ const Body = z
         }),
       )
       .min(1),
+    sessionId: z.string().uuid().optional(),
   })
   .refine(
     (b) => b.messages.length > 0 && b.messages[b.messages.length - 1]!.role === 'user',
@@ -38,9 +42,25 @@ export async function POST(req: Request): Promise<Response> {
 
   const messages: ChatMessage[] = parsed.messages;
 
+  // Best-effort user lookup. getCurrentUser returns null instead of throwing,
+  // so unauthed requests still produce a trace (with userId undefined).
+  const user = await getCurrentUser();
+  const userId = user?.id;
+
+  const trace = await startTrace({
+    name: 'chat.turn',
+    userId,
+    sessionId: parsed.sessionId,
+    input: { messages },
+    tags: ['env:production'],
+  });
+
   try {
+    const condenseSpan = trace.span('condense', { messages });
     const standalone = await condenseQuery(messages);
-    const rag = await runRag(standalone);
+    condenseSpan.end({ standalone });
+
+    const rag = await runRag(standalone, { parentTrace: trace });
 
     const history = messages.slice(0, -1);
     const llmMessages: ChatMessage[] = [
@@ -59,11 +79,29 @@ export async function POST(req: Request): Promise<Response> {
       debug: rag.debug,
     });
 
+    const generateSpan = trace.span('generate', { systemLen: rag.system.length });
+
     const result = streamText({
       model: google(requireEnv('GEMINI_MODEL')),
       system: rag.system,
       messages: llmMessages,
-      onFinish: () => {
+      onFinish: async ({ text, usage, finishReason }) => {
+        generateSpan.end({
+          tokens_in: usage.promptTokens,
+          tokens_out: usage.completionTokens,
+          // FinishReason values: 'stop' | 'length' | 'content-filter' | 'tool-calls' | 'error' | 'other' | 'unknown'
+          // 'error' is the closest to an abort/cancel scenario in the AI SDK type.
+          finish_reason: finishReason,
+          chars_out: text.length,
+        });
+        const aborted = finishReason === 'error';
+        const level: TraceLevel = aborted ? 'WARNING' : 'DEFAULT';
+        if (aborted) trace.setTag('aborted');
+        trace.end(
+          { answer: text, sources: rag.sources, finishReason },
+          level,
+        );
+        await flushAsync();
         data.close();
       },
     });
@@ -71,6 +109,9 @@ export async function POST(req: Request): Promise<Response> {
     return result.toDataStreamResponse({ data });
   } catch (err) {
     console.error('[api/chat] failed:', err);
+    const message = err instanceof Error ? err.message : String(err);
+    trace.end({ error: message }, 'ERROR');
+    await flushAsync();
     return Response.json({ error: 'chat failed' }, { status: 500 });
   }
 }
