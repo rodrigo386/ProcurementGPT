@@ -43,14 +43,16 @@ create policy articles_admin_delete on articles for delete to authenticated
   using (is_admin());
 
 -- 6c.4 — admin view of profiles + auth.users.email
-create or replace view profiles_with_email
-with (security_invoker = true) as
+-- NOT security_invoker: in this Supabase project, service_role has no SELECT on
+-- auth.users (only postgres does). Run as owner (postgres) to do the JOIN, then
+-- gate access via grants. requireAdmin in the route layer is the actual auth gate.
+create view profiles_with_email as
   select p.id, p.role, p.display_name, p.created_at,
          u.email, u.last_sign_in_at, u.created_at as auth_created_at
     from profiles p
     join auth.users u on u.id = p.id;
 
-grant select on profiles_with_email to authenticated;
+grant select on profiles_with_email to authenticated, service_role;
 
 -- 6c.5 — sessions count helper (callable by authenticated; admin gate is in API layer)
 create or replace function admin_user_session_counts()
