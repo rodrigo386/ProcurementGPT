@@ -19,6 +19,29 @@ describe('lib/ingest/metadata', () => {
     expect(meta.author).toBe('João Silva');
   });
 
+  it('rejects a CPF-shaped first line and falls through to the next candidate', async () => {
+    const { extractMetadata } = await import('@/lib/ingest/metadata');
+    const text =
+      '036.310.189-67 Celso Rudey\n\n' +
+      'Apostila Compras Sustentáveis\n\n' +
+      'Este documento descreve as práticas de compras sustentáveis no setor industrial brasileiro.';
+    const meta = extractMetadata(text, 'apostila.pdf');
+    expect(meta.title).toBe('Apostila Compras Sustentáveis');
+  });
+
+  it('rejects mostly-digits / non-alpha first lines and falls back to filename when no candidate qualifies', async () => {
+    const { extractMetadata } = await import('@/lib/ingest/metadata');
+    const text =
+      '12/05/2024\n\n' +
+      '00.000.000/0001-00\n\n' +
+      '125\n\n' +
+      'a.\n\n' +
+      'b.\n\n' +
+      'Conteúdo do corpo do documento começa aqui de fato.';
+    const meta = extractMetadata(text, 'meu_doc_relevante.pdf');
+    expect(meta.title).toBe('meu doc relevante');
+  });
+
   it('detects PT vs EN by stopword frequency', async () => {
     const { extractMetadata } = await import('@/lib/ingest/metadata');
     const pt =

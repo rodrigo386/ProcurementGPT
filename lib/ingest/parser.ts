@@ -1,3 +1,5 @@
+import { cleanExtractedText } from '@/lib/ingest/clean';
+
 export type ParsedFile = { text: string; pageCount?: number };
 
 export async function parseFile(
@@ -34,7 +36,11 @@ export async function parseFile(
   }
 
   // Strip null bytes (corrupted PDFs) and normalize line endings; do NOT strip spaces.
-  const cleaned = text.replace(/\x00/g, '').replace(/\r\n/g, '\n');
+  const normalized = text.replace(/\x00/g, '').replace(/\r\n/g, '\n');
+  // For PDFs, strip per-page headers/footers/watermarks/TOC noise. Other
+  // formats are passed through cleanExtractedText too — its rules are safe
+  // (the repetition threshold won't match anything in a clean DOCX/TXT).
+  const cleaned = cleanExtractedText(normalized);
   if (cleaned.trim().length < 500) {
     throw new Error(
       'Conteúdo muito curto — PDF parece escaneado / OCR necessário (texto extraído < 500 caracteres)',
