@@ -9,7 +9,11 @@ import { startTrace, flushAsync } from '@/lib/observability/langfuse';
 import { getCurrentUser } from '@/lib/auth';
 import type { TraceLevel } from '@/lib/observability/types';
 
-export const runtime = 'edge';
+// Node runtime (was 'edge' through sub-projeto 6) — switched in sub-projeto 7
+// because the langfuse SDK uses Node-only APIs (fs/crypto/etc.) that fail
+// silently on Edge, dropping all traces. ~50ms cold-start cost is invisible
+// to users; streaming response shape is unchanged via Vercel AI SDK.
+export const runtime = 'nodejs';
 
 const Body = z
   .object({
