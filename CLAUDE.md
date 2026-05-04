@@ -14,6 +14,7 @@ removida em 2026-05-02). Audiência: gestores de compras brasileiros (PT-BR prim
 - Voyage AI para embeddings (`voyage-3-large`, 1024 dims)
 - Cohere Rerank 3 para reranking
 - Langfuse para observabilidade (sub-projeto 7)
+- **Deploy em Railway** (decisão 2026-05-04). Roda Next.js como processo long-lived (não serverless), então `maxDuration` exports são no-op e o padrão fire-and-forget de `/api/admin/ingest/run/[jobId]` fica naturalmente mais robusto que em Vercel — sem timeout de função nem morte súbita após response.
 
 ## Princípios não-negociáveis
 1. **Retrieval híbrido obrigatório** — vetorial + lexical (FTS portuguese) + RRF + Cohere rerank, nunca só cosine
@@ -209,7 +210,7 @@ APP_ENV=local                  # sub-projeto 8 — drives env:<value> tag in Lan
 - `DropdownMenuTrigger asChild` do shadcn base-nova também não existe (wraps `@base-ui/react/menu` MenuTrigger) — estilizar o trigger direto via `className`
 - Restaurar localStorage de conversas após login — sub-projeto 6b decidiu **discard** (DB é a única fonte de verdade quando logado)
 - `pdf-parse@2.x` tem API incompatível (class-based, depende de pdfjs-dist com workers) — fixado em `1.1.1` (default-export simples). Importar **inner path** `pdf-parse/lib/pdf-parse.js` (NÃO `pdf-parse`) — o `index.js` do pacote roda um self-test no module load que tenta ler `test/data/05-versions-space.pdf` e dispara `ENOENT`. Dinâmico ou top-level, qualquer import de `'pdf-parse'` direto vai quebrar
-- Não awaitar `fetch('/api/admin/ingest/run/[jobId]')` no cliente — o ponto do padrão fire-and-forget é deixar a função do Vercel rodar até o fim mesmo após a request original retornar
+- Não awaitar `fetch('/api/admin/ingest/run/[jobId]')` no cliente — o ponto do padrão fire-and-forget é deixar o handler rodar até o fim mesmo após a request original retornar. Em Railway isso é trivial (processo long-lived); o padrão veio da Vercel onde só a request keep-alive segurava a função viva.
 - Em `/admin/*` API routes ou server components, usar `requireAdmin()` + retornar **404** (não 403) para non-admins — não revelar a existência do endpoint
 - A view `profiles_with_email` foi criada com `security_invoker = true` (queries rodam como o caller). Authed users **não** têm SELECT em `auth.users`, então qualquer query do view via cookie-aware client falha com `permission denied for table users`. Usar `getServerSupabase()` (service-role) em routes admin-gated que precisam ler dela
 - Bucket `ingest-uploads` é privado, com policy admin-only que restringe inserts ao próprio `auth.uid()` folder — não tentar fazer upload para outro user_id
@@ -264,7 +265,7 @@ admin → /admin/ingest → drop PDF/DOCX/TXT no Dropzone (validação client: M
                                 ↓
    POST /api/admin/ingest/upload (multipart, Node) → Storage upload + ingestion_jobs row (status=queued)
                                 ↓
-   POST /api/admin/ingest/run/[jobId] (Node, fire-and-forget, sem await do cliente; Vercel mantém função viva)
+   POST /api/admin/ingest/run/[jobId] (Node, fire-and-forget, sem await do cliente; Railway mantém o handler vivo no processo long-lived)
                                 ↓
    runPipeline: parsing → chunking → embedding (Voyage, batch 16) → inserting → done
                                 ↓

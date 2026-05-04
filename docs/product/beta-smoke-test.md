@@ -1,12 +1,15 @@
 # Beta Smoke Test — Manual Checklist
 
-Run this checklist before sending a beta invite. Updated 2026-05-03.
+Run this checklist before sending a beta invite. Updated 2026-05-04.
 
 ## Prereqs
-- [ ] Latest `main` deployed to the beta Vercel environment
-- [ ] `APP_ENV=beta` configured in Vercel project env
-- [ ] `LANGFUSE_*` keys present in Vercel project env
-- [ ] Migration 0007 applied to production Supabase
+- [ ] Latest `main` deployed to the beta Railway service
+- [ ] `APP_ENV=beta` configured in Railway service variables
+- [ ] `LANGFUSE_*` keys present in Railway service variables
+- [ ] Migration 0007 (`rate_limit_events` + `check_rate_limit` RPC) applied to production Supabase
+- [ ] Migration 0008 (`message_feedback` + RLS) applied to production Supabase
+- [ ] Railway domain (`https://<service>.up.railway.app`) added to Supabase Auth → Site URL + Redirect URLs
+- [ ] Same Railway domain added as authorized redirect URI in Google OAuth Console (`/auth/callback`)
 
 ## Auth
 - [ ] `/login` email + senha login works

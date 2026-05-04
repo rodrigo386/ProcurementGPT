@@ -4,8 +4,6 @@ import { runPipeline } from '@/lib/ingest/pipeline';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-// Bound function lifetime; on Vercel Pro maxDuration default is 60s, max 300s.
-export const maxDuration = 300;
 
 export async function POST(_req: Request, { params }: { params: { jobId: string } }) {
   try {
