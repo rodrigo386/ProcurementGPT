@@ -87,6 +87,7 @@ export async function POST(req: Request): Promise<Response> {
       sources: rag.sources,
       classification: rag.classification,
       debug: rag.debug,
+      traceId: trace.id,
     });
 
     const generateSpan = trace.span('generate', { systemLen: rag.system.length });

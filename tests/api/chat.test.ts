@@ -139,6 +139,7 @@ describe('POST /api/chat', () => {
       sources: [{ number: 1, articleId: 'a', articleTitle: 'A Matriz de Kraljic', chunkId: 'c1' }],
       classification: { theory: 'kraljic', intent: 'definition', language: 'pt', needsRetrieval: true },
       debug: { classifyMs: 1, embedMs: 2, vectorMs: 3, ftsMs: 4, rerankMs: 5, totalMs: 15 },
+      traceId: 'mock-trace-id',
     });
   });
 
@@ -228,5 +229,49 @@ describe('POST /api/chat', () => {
     expect(res.headers.get('Retry-After')).toBe('60');
     const body = await res.json();
     expect(body).toEqual({ error: 'rate_limited', retry_after_secs: 60 });
+  });
+
+  it('includes traceId in the message annotation', async () => {
+    vi.doMock('@/lib/auth', () => ({ getCurrentUser: vi.fn().mockResolvedValue({ id: 'user-1' }) }));
+    vi.doMock('@/lib/rate-limit', () => ({
+      checkChatRateLimit: vi.fn().mockResolvedValue({ allowed: true }),
+    }));
+    vi.doMock('@/lib/observability/langfuse', () => ({
+      startTrace: vi.fn().mockResolvedValue(NOOP_TRACE),
+      flushAsync: vi.fn().mockResolvedValue(undefined),
+    }));
+
+    const condenseSpy = vi.fn().mockResolvedValue('standalone-query');
+    vi.doMock('@/lib/rag/condenser', () => ({ condenseQuery: condenseSpy }));
+
+    const runRagSpy = vi.fn().mockResolvedValue({
+      classification: { theory: null, intent: 'definition', language: 'pt', needsRetrieval: true },
+      sources: [],
+      system: 'sys',
+      user: 'user q',
+      debug: { classifyMs: 1, embedMs: 1, vectorMs: 1, ftsMs: 1, rerankMs: 1, totalMs: 5 },
+    });
+    vi.doMock('@/lib/rag', () => ({ runRag: runRagSpy }));
+
+    const appendMessageAnnotation = vi.fn();
+    vi.doMock('ai', () => ({
+      streamText: vi.fn(() => ({
+        toDataStreamResponse: () => new Response('ok', { status: 200 }),
+      })),
+      StreamData: class {
+        appendMessageAnnotation = appendMessageAnnotation;
+        close = vi.fn();
+      },
+    }));
+    vi.doMock('@ai-sdk/google', () => ({
+      createGoogleGenerativeAI: vi.fn(() => () => 'mock-model'),
+    }));
+
+    const { POST } = await import('@/app/api/chat/route');
+    await POST(makeReq({ messages: [{ role: 'user', content: 'oi' }] }));
+
+    expect(appendMessageAnnotation).toHaveBeenCalledWith(
+      expect.objectContaining({ traceId: 'mock-trace-id' }),
+    );
   });
 });
