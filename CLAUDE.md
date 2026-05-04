@@ -38,17 +38,17 @@ removida em 2026-05-02). Audiência: gestores de compras brasileiros (PT-BR prim
 | 6c | `admin-ui-complete` | `/admin` (sidebar + sub-routes `/admin/{users,articles,ingest}`) gated por `requireAdmin()` → 404 (não 403) para non-admins. Port TS da pipeline de ingest (`pdf-parse@1.1.1` + `mammoth` + chunker/metadata/parser/pipeline) roda como Node route via fire-and-forget + 2s polling, sobrevive ao fechamento da aba. Migration 0005: `ingestion_jobs` + RLS, `profiles_with_email` view, `admin_user_session_counts()` RPC, `profiles_admin_update`/`articles_admin_delete` policies. Storage bucket `ingest-uploads` com policy admin-only path-scoped. Auto-cleanup de jobs `done` > 7d inline no `/jobs`. UserRow mostra link "Admin" só para admins |
 | 7 | `langfuse-eval-complete` | Langfuse instrumentation em `/api/chat` (Edge): trace `chat.turn` por turno com 6 spans aninhados (condense, classify, retrieve, rerank, build-prompt, generate), `userId` = Supabase UUID, `sessionId` = sessions.id, flush em onFinish/error/abort. Wrapper `lib/observability/langfuse.ts` com no-op fallback quando keys ausentes. Eval expandido para 25 pares (5 ângulos × 4 artigos + 2 smalltalk + 3 comparison) com batched embed (1 chamada Voyage para todas as queries). CI workflow GitHub Actions roda typecheck + vitest + pytest + rag:eval em PR + push para main, falha se `recall@5 < 0.85`. Eval traces tagged `env:ci` agrupados em sessão por commit. Baseline atual: recall@5 = 1.00 (18/18 scoreable na corpus de 4 artigos). |
 | 8 | `beta-hardening-complete` | Per-user rate limit em `/api/chat` (10/min, 60/h) via Postgres RPC `check_rate_limit` + tabela `rate_limit_events` (migration 0007, RLS sem policies, RPC security definer com cleanup probabilístico). Auth obrigatório em `/api/chat` (401 sem cookie). Threshold `MIN_RELEVANCE = 0.10` no reranker — chunks abaixo são descartados, prompt-builder cai no `REFUSAL_INSTRUCTION`. Tag dinâmica `env:${APP_ENV}` no trace (default `production`). Span `rerank` ganha `top1Score`; trace ganha tag `low-confidence` quando threshold zera tudo. `sonner` Toaster no root layout; `ChatSession` mostra toast amigável em 429 (lê `retry_after_secs`) e 500. `ChatErrorBoundary` envolvendo `<ChatSession/>`. Checklist manual em `docs/product/beta-smoke-test.md`. |
+| 9 | `feedback-loop-complete` | 👍/👎 inline em cada resposta do assistant via `<MessageActions/>` (lucide ThumbsUp/ThumbsDown), 👎 expande textarea inline para comentário (≤1000 chars). Migration 0008: `message_feedback` + 4 RLS owner-only policies + `unique(user_id, trace_id)` para upsert flip. `Trace.id` exposto pelo wrapper Langfuse (real ou `crypto.randomUUID()` em no-op). `/api/chat` adiciona `traceId` à message annotation; client passa de volta em `POST /api/feedback` (Node, zod-validated, 401/400/404/500/204). `lib/feedback.recordFeedback` UPSERTa + chama `scoreTrace` fire-and-forget (`name: user-feedback`, `value: 1` ou `-1`). `useChatSessionsRemote` hidrata `ratings: Map<traceId, rating>` ao trocar sessão. Header ganha link mailto "Feedback geral" (hardcoded até decidir branding). |
 
 **Milestone 1 closed.**
 
 ## Milestone 2 — Beta Readiness (em planejamento, 2026-05-03)
 Objetivo: abrir beta fechado (3–5 gestores convidados) para coletar traces reais no Langfuse e escopar Milestone 3 (B2B) com dados, não com palpite. Single-tenant deliberadamente.
 
-Sub-projetos:
 - **8 — beta-hardening** ✅ completo (`beta-hardening-complete`)
-- **9 — feedback-loop** (próximo): migration `message_feedback`, 👍/👎 inline na resposta + comentário opcional, `/api/feedback` route que persiste em DB + chama `trace.score()` no Langfuse, link "feedback geral" no header
+- **9 — feedback-loop** ✅ completo (`feedback-loop-complete`)
 
-Critério de saída para abrir Milestone 3: ≥100 traces `env:beta` com ≥30 ratings ao longo de ≥2 semanas, classificados em buckets (retrieval / prompt / produto / fora-de-escopo).
+Milestone 2 entregue. Critério de saída para Milestone 3 (≥100 traces `env:beta` com ≥30 ratings em ≥2 semanas) começa a contar a partir do primeiro convite de beta.
 
 Roadmap completo em `docs/product/beta-readiness.md`. Roadmap B2B (Milestone 3+) em `docs/product/b2b-roadmap.md`.
 
@@ -222,6 +222,10 @@ APP_ENV=local                  # sub-projeto 8 — drives env:<value> tag in Lan
 - Acessar `rate_limit_events` direto do cliente — a tabela tem RLS sem policies por design; sempre via RPC `check_rate_limit` (security definer)
 - Esquecer de adicionar mocks de `@/lib/auth` + `@/lib/rate-limit` em testes novos de `/api/chat` — sem eles a route hoje retorna 401 antes de qualquer outro código rodar
 - Mudar a versão de `sonner` sem confirmar que o `Toaster` continua honrando o tema do `next-themes` — o tema é resolvido em runtime via `useTheme()` no wrapper
+- Persistir IDs de mensagem do `useChat` no JSONB de `sessions.messages` — sub-projeto 9 deliberadamente NÃO faz isso. O anchor de feedback é o `trace_id` Langfuse propagado via `appendMessageAnnotation`. Se um sub-projeto futuro precisar de message-level feedback (não trace-level), aí sim fazer schema change.
+- Esquecer `id: 'mock-trace-id'` ao criar mocks de `Trace` em testes novos — o tipo agora exige `id: string` (sub-projeto 9). Sem isso, typecheck quebra.
+- Mexer no Header sem manter o link "Feedback geral" — é o canal de fallback para reports que não cabem em 👎. O destino `mailto:rgoalves@gmail.com` é TBD-temporary; trocar quando branding definir.
+- Bloquear o response do `/api/feedback` em falha do Langfuse `score()` — `recordFeedback` chama `scoreTrace` fire-and-forget de propósito; UI não deve esperar por Langfuse.
 
 ## Fluxo de chat end-to-end (sub-projetos 1-7)
 ```
