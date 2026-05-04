@@ -1,6 +1,7 @@
 'use client';
 
 import { useChat, type Message as AIMessage } from 'ai/react';
+import { toast } from 'sonner';
 import type { ChatMessage } from '@/lib/rag/types';
 import type { StoredSession } from '@/lib/chat-storage';
 import { EmptyState } from './EmptyState';
@@ -28,6 +29,19 @@ export function ChatSession({ session, onMessagesChange }: Props) {
       role: m.role,
       content: m.content,
     })),
+    onResponse: async (res) => {
+      if (res.status === 429) {
+        const body = await res.clone().json().catch(() => ({}));
+        const secs: number = typeof body?.retry_after_secs === 'number' ? body.retry_after_secs : 60;
+        const minutes = Math.max(1, Math.ceil(secs / 60));
+        toast.error(`Limite de mensagens atingido. Tente novamente em ~${minutes} min.`);
+      }
+    },
+    onError: (err) => {
+      // 429 already surfaced via onResponse — avoid double toast.
+      if (err.message.includes('rate_limited') || err.message.includes('429')) return;
+      toast.error('Tivemos um problema. Tente enviar novamente.');
+    },
     onFinish: (assistant) => {
       const next = toChatMessages([...messages, assistant]);
       onMessagesChange(next);
