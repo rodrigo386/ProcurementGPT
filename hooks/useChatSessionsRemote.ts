@@ -28,6 +28,7 @@ export function useChatSessionsRemote(): UseChatSessions {
   const [sessions, setSessions] = useState<StoredSession[]>([]);
   const [currentId, setCurrentId] = useState<string>('');
   const [hydrated, setHydrated] = useState(false);
+  const [ratings, setRatings] = useState<Map<string, 'up' | 'down'>>(new Map());
 
   useEffect(() => {
     let cancelled = false;
@@ -70,6 +71,31 @@ export function useChatSessionsRemote(): UseChatSessions {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!currentId) return;
+    let cancelled = false;
+    (async () => {
+      const sb = supabaseBrowser();
+      const { data, error } = await sb
+        .from('message_feedback')
+        .select('trace_id, rating')
+        .eq('session_id', currentId);
+      if (cancelled) return;
+      if (error) {
+        console.warn('[useChatSessionsRemote] feedback load failed:', error);
+        return;
+      }
+      const next = new Map<string, 'up' | 'down'>();
+      for (const r of (data ?? []) as Array<{ trace_id: string; rating: 'up' | 'down' }>) {
+        next.set(r.trace_id, r.rating);
+      }
+      setRatings(next);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentId]);
 
   const switchTo = useCallback((id: string) => {
     setCurrentId(id);
@@ -140,6 +166,7 @@ export function useChatSessionsRemote(): UseChatSessions {
       sessions: [],
       currentId: '',
       current: EMPTY_STUB,
+      ratings: new Map(),
       switchTo,
       createNew: createNew as unknown as () => void,
       deleteSession: deleteSession as unknown as (id: string) => void,
@@ -153,6 +180,7 @@ export function useChatSessionsRemote(): UseChatSessions {
     sessions,
     currentId,
     current,
+    ratings,
     switchTo,
     createNew: createNew as unknown as () => void,
     deleteSession: deleteSession as unknown as (id: string) => void,

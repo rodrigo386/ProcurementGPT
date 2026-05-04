@@ -64,6 +64,7 @@ function ChatRootMounted() {
           <ChatSession
             key={sessionsApi.currentId}
             session={sessionsApi.current}
+            initialRatings={sessionsApi.ratings}
             onMessagesChange={sessionsApi.updateMessages}
           />
         </ChatErrorBoundary>

@@ -14,6 +14,7 @@ export type UseChatSessions = {
   sessions: StoredSession[];
   currentId: string;
   current: StoredSession;
+  ratings?: Map<string, 'up' | 'down'>;
   switchTo: (id: string) => void;
   createNew: () => void;
   deleteSession: (id: string) => void;
