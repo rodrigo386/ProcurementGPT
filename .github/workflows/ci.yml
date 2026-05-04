@@ -33,6 +33,13 @@ jobs:
       - name: Vitest
         run: npm test
 
+      - name: Next build (catches prerender + ESLint errors that only fail on production build)
+        run: npm run build
+        env:
+          # Build needs NEXT_PUBLIC_* baked in; everything else is server-only and read at runtime.
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+
       - name: Pre-download NLTK data (unstructured dep)
         if: hashFiles('scripts/tests/**/*.py') != ''
         run: |
