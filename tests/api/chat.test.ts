@@ -3,6 +3,7 @@ import { describe, expect, it, beforeEach, vi } from 'vitest';
 // Shared NOOP trace returned by all startTrace mocks
 const NOOP_SPAN = { end: vi.fn() };
 const NOOP_TRACE = {
+  id: 'mock-trace-id',
   span: vi.fn(() => NOOP_SPAN),
   end: vi.fn(),
   setMetadata: vi.fn(),

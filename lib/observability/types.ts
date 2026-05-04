@@ -5,6 +5,7 @@ export interface Span {
 }
 
 export interface Trace {
+  id: string;
   span(name: string, input?: unknown): Span;
   end(output?: unknown, level?: TraceLevel): void;
   setMetadata(key: string, value: unknown): void;

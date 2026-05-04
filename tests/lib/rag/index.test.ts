@@ -112,6 +112,7 @@ describe('rag runRag', () => {
 
     const spans: Array<{ name: string; ended: boolean }> = [];
     const trace = {
+      id: 'mock-trace-id',
       span: (name: string) => {
         const entry = { name, ended: false };
         spans.push(entry);

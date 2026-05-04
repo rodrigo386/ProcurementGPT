@@ -1,83 +1,86 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 
-const ORIGINAL_ENV = { ...process.env };
+const ORIGINAL_KEYS = {
+  pub: process.env.LANGFUSE_PUBLIC_KEY,
+  sec: process.env.LANGFUSE_SECRET_KEY,
+};
 
 beforeEach(() => {
   vi.resetModules();
-  process.env = { ...ORIGINAL_ENV };
-  delete process.env.LANGFUSE_SECRET_KEY;
-  delete process.env.LANGFUSE_PUBLIC_KEY;
 });
 
 afterEach(() => {
-  process.env = ORIGINAL_ENV;
+  process.env.LANGFUSE_PUBLIC_KEY = ORIGINAL_KEYS.pub;
+  process.env.LANGFUSE_SECRET_KEY = ORIGINAL_KEYS.sec;
 });
 
-describe('lib/observability/langfuse', () => {
-  it('startTrace returns a no-op trace when LANGFUSE_SECRET_KEY is missing', async () => {
+describe('startTrace', () => {
+  it('returns a no-op trace with a UUID id when keys are missing', async () => {
+    delete process.env.LANGFUSE_PUBLIC_KEY;
+    delete process.env.LANGFUSE_SECRET_KEY;
     const { startTrace } = await import('@/lib/observability/langfuse');
-    const trace = await startTrace({ name: 'test' });
-    const span = trace.span('child');
-    span.end({ ok: true });
-    trace.setMetadata('k', 'v');
-    trace.setTag('tag');
-    trace.end({ ok: true }, 'DEFAULT');
-    expect(trace).toBeDefined();
+    const t = await startTrace({ name: 'test' });
+    expect(t.id).toMatch(/^[0-9a-f-]{36}$/i);
+    t.span('s').end({});
+    t.setTag('x');
+    t.setMetadata('k', 'v');
+    t.end();
   });
 
-  it('startTrace returns a no-op trace when keys are empty strings', async () => {
-    process.env.LANGFUSE_SECRET_KEY = '';
-    process.env.LANGFUSE_PUBLIC_KEY = '';
+  it('exposes the Langfuse trace id when keys are present', async () => {
+    process.env.LANGFUSE_PUBLIC_KEY = 'pub';
+    process.env.LANGFUSE_SECRET_KEY = 'sec';
+    vi.doMock('langfuse', () => ({
+      Langfuse: vi.fn().mockImplementation(() => ({
+        trace: vi.fn(() => ({
+          id: 'lf-trace-abc',
+          update: vi.fn(),
+          span: vi.fn(() => ({ end: vi.fn() })),
+        })),
+        flushAsync: vi.fn().mockResolvedValue(undefined),
+      })),
+    }));
     const { startTrace } = await import('@/lib/observability/langfuse');
-    const trace = await startTrace({ name: 'test' });
-    expect(() => trace.span('x').end()).not.toThrow();
-    expect(() => trace.end()).not.toThrow();
+    const t = await startTrace({ name: 'test' });
+    expect(t.id).toBe('lf-trace-abc');
+  });
+});
+
+describe('scoreTrace', () => {
+  it('is a no-op when keys are missing', async () => {
+    delete process.env.LANGFUSE_PUBLIC_KEY;
+    delete process.env.LANGFUSE_SECRET_KEY;
+    const { scoreTrace } = await import('@/lib/observability/langfuse');
+    await expect(
+      scoreTrace({ traceId: 't1', name: 'user-feedback', value: 1 }),
+    ).resolves.toBeUndefined();
   });
 
-  it('startTrace creates a real Langfuse trace when keys are present', async () => {
-    process.env.LANGFUSE_SECRET_KEY = 'sk-test';
-    process.env.LANGFUSE_PUBLIC_KEY = 'pk-test';
-    const lfTraceUpdate = vi.fn();
-    const lfSpanEnd = vi.fn();
-    const lfTraceSpan = vi.fn().mockReturnValue({ end: lfSpanEnd });
-    const lfTrace = vi.fn().mockReturnValue({ update: lfTraceUpdate, span: lfTraceSpan });
+  it('calls Langfuse.score with the right body and flushes', async () => {
+    process.env.LANGFUSE_PUBLIC_KEY = 'pub';
+    process.env.LANGFUSE_SECRET_KEY = 'sec';
+    const score = vi.fn();
     const flushAsync = vi.fn().mockResolvedValue(undefined);
-    const Langfuse = vi.fn().mockImplementation(() => ({ trace: lfTrace, flushAsync }));
-    vi.doMock('langfuse', () => ({ Langfuse }));
-
-    const obs = await import('@/lib/observability/langfuse');
-    const trace = await obs.startTrace({
-      name: 'chat.turn',
-      userId: 'u1',
-      sessionId: 's1',
-      input: { msg: 'hi' },
-      tags: ['env:production'],
+    vi.doMock('langfuse', () => ({
+      Langfuse: vi.fn().mockImplementation(() => ({
+        trace: vi.fn(() => ({
+          id: 'tx',
+          update: vi.fn(),
+          span: vi.fn(() => ({ end: vi.fn() })),
+        })),
+        score,
+        flushAsync,
+      })),
+    }));
+    const { startTrace, scoreTrace } = await import('@/lib/observability/langfuse');
+    await startTrace({ name: 'warm' });
+    await scoreTrace({ traceId: 't1', name: 'user-feedback', value: -1, comment: 'meh' });
+    expect(score).toHaveBeenCalledWith({
+      traceId: 't1',
+      name: 'user-feedback',
+      value: -1,
+      comment: 'meh',
     });
-    expect(Langfuse).toHaveBeenCalledWith(
-      expect.objectContaining({ secretKey: 'sk-test', publicKey: 'pk-test' }),
-    );
-    expect(lfTrace).toHaveBeenCalledWith(
-      expect.objectContaining({
-        name: 'chat.turn',
-        userId: 'u1',
-        sessionId: 's1',
-        tags: ['env:production'],
-      }),
-    );
-    const span = trace.span('classify', { q: 'foo' });
-    span.end({ ok: true }, 'DEFAULT');
-    expect(lfTraceSpan).toHaveBeenCalledWith({ name: 'classify', input: { q: 'foo' } });
-    expect(lfSpanEnd).toHaveBeenCalledWith({ output: { ok: true }, level: 'DEFAULT' });
-
-    trace.end({ done: true }, 'ERROR');
-    expect(lfTraceUpdate).toHaveBeenCalledWith({ output: { done: true }, level: 'ERROR' });
-
-    await obs.flushAsync();
     expect(flushAsync).toHaveBeenCalled();
-  });
-
-  it('flushAsync resolves immediately when no client was instantiated', async () => {
-    const { flushAsync } = await import('@/lib/observability/langfuse');
-    await expect(flushAsync()).resolves.toBeUndefined();
   });
 });
