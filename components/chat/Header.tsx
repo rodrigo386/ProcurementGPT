@@ -1,9 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Menu, Moon, Sun, Monitor } from 'lucide-react';
+import { Menu, Moon, Sun, Monitor, MessageSquareText } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { Button } from '@/components/ui/button';
+
+// TODO: replace with company-owned address once branding is decided.
+const FEEDBACK_MAILTO =
+  'mailto:rgoalves@gmail.com?subject=ProcurementGPT%20feedback';
 
 type Props = {
   onOpenSidebar?: () => void;
@@ -44,9 +48,19 @@ export function Header({ onOpenSidebar }: Props) {
         ) : null}
         <span className="text-sm font-semibold md:hidden">ProcurementGPT</span>
       </div>
-      <Button size="icon" variant="ghost" onClick={cycle} aria-label={label} title={label}>
-        <Icon className="h-4 w-4" />
-      </Button>
+      <div className="flex items-center gap-1">
+        <a
+          href={FEEDBACK_MAILTO}
+          aria-label="Enviar feedback"
+          title="Enviar feedback geral"
+          className="inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-accent hover:text-accent-foreground"
+        >
+          <MessageSquareText className="h-4 w-4" />
+        </a>
+        <Button size="icon" variant="ghost" onClick={cycle} aria-label={label} title={label}>
+          <Icon className="h-4 w-4" />
+        </Button>
+      </div>
     </header>
   );
 }
