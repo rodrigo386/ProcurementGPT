@@ -80,7 +80,7 @@ export function MessageActions({ traceId, sessionId, initialRating }: Props) {
           type="button"
           onClick={() => click('up')}
           aria-pressed={rating === 'up'}
-          aria-label="👍"
+          aria-label="Resposta útil"
           title="Resposta boa"
           className={
             rating === 'up'
@@ -94,7 +94,7 @@ export function MessageActions({ traceId, sessionId, initialRating }: Props) {
           type="button"
           onClick={() => click('down')}
           aria-pressed={rating === 'down'}
-          aria-label="👎"
+          aria-label="Resposta não útil"
           title="Resposta ruim"
           className={
             rating === 'down'

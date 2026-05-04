@@ -26,13 +26,13 @@ const PROPS = {
 describe('<MessageActions/>', () => {
   it('renders a thumbs-up and thumbs-down button', () => {
     render(<MessageActions {...PROPS} />);
-    expect(screen.getByRole('button', { name: /útil|👍|gostei/i })).toBeDefined();
-    expect(screen.getByRole('button', { name: /não.*útil|👎|não gostei/i })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Resposta útil' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Resposta não útil' })).toBeDefined();
   });
 
   it('renders the up button as active when initialRating is "up"', () => {
     render(<MessageActions {...PROPS} initialRating="up" />);
-    const up = screen.getByRole('button', { name: /útil|👍|gostei/i });
+    const up = screen.getByRole('button', { name: 'Resposta útil' });
     expect(up.getAttribute('aria-pressed')).toBe('true');
   });
 
@@ -40,7 +40,7 @@ describe('<MessageActions/>', () => {
     const fetchSpy = vi.fn(async () => new Response(null, { status: 204 })) as typeof fetch;
     globalThis.fetch = fetchSpy;
     render(<MessageActions {...PROPS} />);
-    await userEvent.click(screen.getByRole('button', { name: /útil|👍|gostei/i }));
+    await userEvent.click(screen.getByRole('button', { name: 'Resposta útil' }));
 
     expect(fetchSpy).toHaveBeenCalled();
     const [url, init] = (fetchSpy as unknown as ReturnType<typeof vi.fn>).mock.calls[0]!;
@@ -57,7 +57,7 @@ describe('<MessageActions/>', () => {
     const fetchSpy = vi.fn(async () => new Response(null, { status: 204 })) as typeof fetch;
     globalThis.fetch = fetchSpy;
     render(<MessageActions {...PROPS} />);
-    await userEvent.click(screen.getByRole('button', { name: /não.*útil|👎|não gostei/i }));
+    await userEvent.click(screen.getByRole('button', { name: 'Resposta não útil' }));
 
     const firstBody = JSON.parse(
       ((fetchSpy as unknown as ReturnType<typeof vi.fn>).mock.calls[0]![1] as RequestInit).body as string,
@@ -79,7 +79,7 @@ describe('<MessageActions/>', () => {
   it('reverts and toasts on a non-2xx response', async () => {
     globalThis.fetch = vi.fn(async () => new Response(null, { status: 500 })) as typeof fetch;
     render(<MessageActions {...PROPS} />);
-    const up = screen.getByRole('button', { name: /útil|👍|gostei/i });
+    const up = screen.getByRole('button', { name: 'Resposta útil' });
     await userEvent.click(up);
     await new Promise((r) => setTimeout(r, 50));
 
