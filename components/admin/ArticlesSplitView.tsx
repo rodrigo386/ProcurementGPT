@@ -18,7 +18,7 @@ export function ArticlesSplitView() {
     (async () => {
       const { data } = await supabaseBrowser()
         .from('articles')
-        .select('id, title, author, language, published_at, ingested_at, metadata')
+        .select('id, title, author, language, published_at, ingested_at, metadata, source_chars')
         .order('ingested_at', { ascending: false })
         .limit(100);
       if (cancelled) return;

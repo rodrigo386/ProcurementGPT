@@ -12,6 +12,7 @@ const articles = [
     published_at: '2024-01-01',
     ingested_at: '2026-05-01T10:00:00Z',
     metadata: { content_hash: '3a7fb29c1234' },
+    source_chars: 12000,
     chunks_count: 28,
   },
   {
@@ -22,6 +23,7 @@ const articles = [
     published_at: '2023-08-01',
     ingested_at: '2026-05-02T10:00:00Z',
     metadata: { content_hash: 'deadbeef' },
+    source_chars: 18000,
     chunks_count: 42,
   },
 ];
