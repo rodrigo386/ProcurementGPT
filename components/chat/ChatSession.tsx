@@ -10,6 +10,7 @@ import { Composer } from './Composer';
 
 type Props = {
   session: StoredSession;
+  initialRatings?: Map<string, 'up' | 'down'>;
   onMessagesChange: (messages: ChatMessage[]) => void;
 };
 
@@ -19,7 +20,7 @@ function toChatMessages(messages: AIMessage[]): ChatMessage[] {
     .map((m) => ({ role: m.role, content: m.content }));
 }
 
-export function ChatSession({ session, onMessagesChange }: Props) {
+export function ChatSession({ session, initialRatings, onMessagesChange }: Props) {
   const { messages, input, setInput, handleSubmit, isLoading, stop } = useChat({
     api: '/api/chat',
     id: session.id,
@@ -38,7 +39,6 @@ export function ChatSession({ session, onMessagesChange }: Props) {
       }
     },
     onError: (err) => {
-      // 429 already surfaced via onResponse — avoid double toast.
       if (err.message.includes('rate_limited') || err.message.includes('429')) return;
       toast.error('Tivemos um problema. Tente enviar novamente.');
     },
@@ -58,8 +58,11 @@ export function ChatSession({ session, onMessagesChange }: Props) {
             id: m.id,
             role: m.role as 'user' | 'assistant',
             content: m.content,
+            annotations: m.annotations,
           }))}
           isLoading={isLoading}
+          sessionId={session.id}
+          initialRatings={initialRatings}
         />
       )}
       <Composer

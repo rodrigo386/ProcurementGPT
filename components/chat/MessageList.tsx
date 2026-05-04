@@ -4,16 +4,29 @@ import { useEffect, useRef } from 'react';
 import { Message } from './Message';
 import type { ChatMessage } from '@/lib/rag/types';
 
-type UIMessage = ChatMessage & { id?: string };
+type Annotation = { traceId?: string };
+
+type UIMessage = ChatMessage & {
+  id?: string;
+  annotations?: unknown[];
+};
 
 type Props = {
   messages: UIMessage[];
   isLoading: boolean;
+  sessionId?: string;
+  initialRatings?: Map<string, 'up' | 'down'>;
 };
 
 const STICK_THRESHOLD_PX = 80;
 
-export function MessageList({ messages, isLoading }: Props) {
+function pickTraceId(m: UIMessage): string | undefined {
+  const ann = m.annotations as Annotation[] | undefined;
+  const found = ann?.find((a) => typeof a?.traceId === 'string');
+  return found?.traceId;
+}
+
+export function MessageList({ messages, isLoading, sessionId, initialRatings }: Props) {
   const ref = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -30,14 +43,21 @@ export function MessageList({ messages, isLoading }: Props) {
   return (
     <div ref={ref} className="flex-1 overflow-y-auto">
       <ol className="max-w-3xl mx-auto px-4 py-6 space-y-4">
-        {messages.map((m, i) => (
-          <Message
-            key={m.id ?? i}
-            role={m.role === 'assistant' ? 'assistant' : 'user'}
-            content={m.content}
-            isStreaming={isLoading && i === lastIdx && m.role === 'assistant'}
-          />
-        ))}
+        {messages.map((m, i) => {
+          const traceId = pickTraceId(m);
+          const initialRating = traceId ? initialRatings?.get(traceId) : undefined;
+          return (
+            <Message
+              key={m.id ?? i}
+              role={m.role === 'assistant' ? 'assistant' : 'user'}
+              content={m.content}
+              isStreaming={isLoading && i === lastIdx && m.role === 'assistant'}
+              traceId={traceId}
+              sessionId={sessionId}
+              initialRating={initialRating}
+            />
+          );
+        })}
       </ol>
     </div>
   );

@@ -2,14 +2,18 @@
 
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { MessageActions } from './MessageActions';
 
 type Props = {
   role: 'user' | 'assistant';
   content: string;
   isStreaming: boolean;
+  traceId?: string;
+  sessionId?: string;
+  initialRating?: 'up' | 'down';
 };
 
-export function Message({ role, content, isStreaming }: Props) {
+export function Message({ role, content, isStreaming, traceId, sessionId, initialRating }: Props) {
   if (role === 'user') {
     return (
       <li className="flex justify-end">
@@ -31,6 +35,9 @@ export function Message({ role, content, isStreaming }: Props) {
             className="inline-block ml-1 h-2 w-2 rounded-full bg-primary animate-pulse"
             aria-label="Gerando"
           />
+        ) : null}
+        {!isStreaming && traceId && sessionId ? (
+          <MessageActions traceId={traceId} sessionId={sessionId} initialRating={initialRating} />
         ) : null}
       </div>
     </li>
