@@ -46,11 +46,9 @@ beforeEach(() => {
           return {
             select: () => ({
               eq: () => ({
-                order: () => ({
-                  limit: async () => ({
-                    data: [{ id: 'c1', ord: 0, content: 'A matriz de Kraljic propõe…' }],
-                    error: null,
-                  }),
+                order: async () => ({
+                  data: [{ id: 'c1', ord: 0, content: 'A matriz de Kraljic propõe…' }],
+                  error: null,
                 }),
               }),
             }),

@@ -13,6 +13,7 @@ export type AdminArticle = {
   published_at: string | null;
   metadata: Record<string, unknown>;
   ingested_at: string;
+  source_chars: number;
 };
 
 type Chunk = { id: string; ord: number; content: string };
@@ -39,8 +40,7 @@ export function ArticleDetail({ article, onDeleted }: Props) {
         .from('chunks')
         .select('id, ord, content')
         .eq('article_id', article.id)
-        .order('ord', { ascending: true })
-        .limit(20);
+        .order('ord', { ascending: true });
       if (cancelled) return;
       setChunks((data ?? []) as Chunk[]);
       setLoading(false);
@@ -59,6 +59,11 @@ export function ArticleDetail({ article, onDeleted }: Props) {
   }
 
   const hash = (article.metadata?.['content_hash'] as string | undefined) ?? '';
+  const totalChunkChars = chunks.reduce((sum, c) => sum + c.content.length, 0);
+  const absorvedPct =
+    article.source_chars > 0
+      ? Math.round((totalChunkChars / article.source_chars) * 100)
+      : 0;
 
   async function handleDelete() {
     if (!article) return;
@@ -75,6 +80,9 @@ export function ArticleDetail({ article, onDeleted }: Props) {
             .filter(Boolean)
             .join(' · ')}
         </p>
+        <p className="text-xs text-muted-foreground mt-1">
+          {chunks.length} chunks · ≈{absorvedPct}% absorvido
+        </p>
       </div>
       <div className="flex gap-2">
         <Button size="sm" variant="destructive" onClick={() => setConfirmOpen(true)}>
@@ -87,11 +95,19 @@ export function ArticleDetail({ article, onDeleted }: Props) {
           <p className="text-xs text-muted-foreground">Nenhum chunk disponível.</p>
         )}
         {chunks.map((c) => (
-          <div key={c.id} className="bg-muted/40 rounded-md p-2 text-xs leading-relaxed border-l-2 border-border">
-            <span className="text-muted-foreground mr-2 tabular-nums">#{c.ord}</span>
-            {c.content.slice(0, 200)}
-            {c.content.length > 200 && '…'}
-          </div>
+          <details
+            key={c.id}
+            className="bg-muted/40 rounded-md border-l-2 border-border text-xs leading-relaxed"
+          >
+            <summary className="cursor-pointer p-2 hover:bg-muted/60">
+              <span className="text-muted-foreground mr-2 tabular-nums">#{c.ord}</span>
+              {c.content.slice(0, 200)}
+              {c.content.length > 200 && '…'}
+            </summary>
+            <pre className="mt-2 px-3 pb-3 whitespace-pre-wrap font-mono text-[11px]">
+              {c.content}
+            </pre>
+          </details>
         ))}
       </div>
       <ConfirmDelete
