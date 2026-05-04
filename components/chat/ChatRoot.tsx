@@ -5,6 +5,7 @@ import { useChatSessionsRemote as useChatSessions } from '@/hooks/useChatSession
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { ChatSession } from './ChatSession';
+import { ChatErrorBoundary } from './ChatErrorBoundary';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 
 export function ChatRoot() {
@@ -59,11 +60,13 @@ function ChatRootMounted() {
       </Sheet>
       <div className="flex-1 flex flex-col min-w-0">
         <Header onOpenSidebar={() => setDrawerOpen(true)} />
-        <ChatSession
-          key={sessionsApi.currentId}
-          session={sessionsApi.current}
-          onMessagesChange={sessionsApi.updateMessages}
-        />
+        <ChatErrorBoundary>
+          <ChatSession
+            key={sessionsApi.currentId}
+            session={sessionsApi.current}
+            onMessagesChange={sessionsApi.updateMessages}
+          />
+        </ChatErrorBoundary>
       </div>
     </div>
   );
