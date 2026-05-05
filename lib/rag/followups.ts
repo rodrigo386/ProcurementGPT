@@ -42,54 +42,77 @@ export type SuggestFollowupsInput = {
   parentTrace?: Trace;
 };
 
-export async function suggestFollowups(input: SuggestFollowupsInput): Promise<string[]> {
-  const { query, answer, chunks, classification } = input;
-  const ai = getGemini();
-  const model = requireEnv('GEMINI_MODEL');
-
-  const lang = classification.language;
-  const mode: 'deepen' | 'redirect' = chunks.length > 0 ? 'deepen' : 'redirect';
-  const system =
-    mode === 'deepen'
-      ? lang === 'en'
-        ? SYSTEM_DEEPEN_EN
-        : SYSTEM_DEEPEN_PT
-      : lang === 'en'
-        ? SYSTEM_REDIRECT_EN
-        : SYSTEM_REDIRECT_PT;
-  const L = LABELS[lang];
-
-  let userBlock: string;
-  if (mode === 'deepen') {
-    const material = chunks
-      .map((c) => `- ${c.articleTitle}: ${c.content.slice(0, SNIPPET_MAX)}`)
-      .join('\n');
-    userBlock = [L.origQ, query, '', L.given, answer, '', L.material, material].join('\n');
-  } else {
-    userBlock = [L.refusalQ, query].join('\n');
+function postProcess(items: string[], query: string): string[] {
+  const norm = (s: string) => s.trim().toLowerCase();
+  const queryNorm = norm(query);
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of items) {
+    const trimmed = raw.trim();
+    if (!trimmed) continue;
+    const key = norm(trimmed);
+    if (key === queryNorm) continue;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(trimmed);
   }
+  return out;
+}
 
-  const res = await ai.models.generateContent({
-    model,
-    contents: `${system}\n\n${userBlock}`,
-    config: {
-      responseMimeType: 'application/json',
-      responseSchema: {
-        type: 'object',
-        properties: {
-          followups: {
-            type: 'array',
-            items: { type: 'string' },
-            minItems: 1,
-            maxItems: 3,
+export async function suggestFollowups(input: SuggestFollowupsInput): Promise<string[]> {
+  try {
+    const { query, answer, chunks, classification } = input;
+    const ai = getGemini();
+    const model = requireEnv('GEMINI_MODEL');
+
+    const lang = classification.language;
+    const mode: 'deepen' | 'redirect' = chunks.length > 0 ? 'deepen' : 'redirect';
+    const system =
+      mode === 'deepen'
+        ? lang === 'en'
+          ? SYSTEM_DEEPEN_EN
+          : SYSTEM_DEEPEN_PT
+        : lang === 'en'
+          ? SYSTEM_REDIRECT_EN
+          : SYSTEM_REDIRECT_PT;
+    const L = LABELS[lang];
+
+    let userBlock: string;
+    if (mode === 'deepen') {
+      const material = chunks
+        .map((c) => `- ${c.articleTitle}: ${c.content.slice(0, SNIPPET_MAX)}`)
+        .join('\n');
+      userBlock = [L.origQ, query, '', L.given, answer, '', L.material, material].join('\n');
+    } else {
+      userBlock = [L.refusalQ, query].join('\n');
+    }
+
+    const res = await ai.models.generateContent({
+      model,
+      contents: `${system}\n\n${userBlock}`,
+      config: {
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: 'object',
+          properties: {
+            followups: {
+              type: 'array',
+              items: { type: 'string' },
+              minItems: 1,
+              maxItems: 3,
+            },
           },
+          required: ['followups'],
         },
-        required: ['followups'],
+        maxOutputTokens: 512,
       },
-      maxOutputTokens: 512,
-    },
-  });
-  const text = res.text ?? '';
-  const parsed = FollowupsSchema.parse(JSON.parse(text));
-  return parsed.followups;
+    });
+    const text = res.text ?? '';
+    const parsed = FollowupsSchema.parse(JSON.parse(text));
+    return postProcess(parsed.followups, query);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn('[rag/followups] returning [] due to error:', message);
+    return [];
+  }
 }

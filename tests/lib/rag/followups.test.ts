@@ -127,4 +127,68 @@ describe('rag followups', () => {
     expect(contents).toContain('## Original question');
     expect(contents).not.toContain('Pergunta original');
   });
+
+  it('returns [] when Gemini throws', async () => {
+    mockGeminiOnce({ throws: new Error('boom') });
+    const { suggestFollowups } = await import('@/lib/rag/followups');
+    const out = await suggestFollowups({
+      query: 'q',
+      answer: 'a',
+      chunks: [SAMPLE_CHUNK],
+      classification: PT_CLASSIFICATION,
+      parentTrace: NOOP_TRACE,
+    });
+    expect(out).toEqual([]);
+  });
+
+  it('returns [] when JSON is malformed', async () => {
+    mockGeminiOnce({ text: 'not json {' });
+    const { suggestFollowups } = await import('@/lib/rag/followups');
+    const out = await suggestFollowups({
+      query: 'q',
+      answer: 'a',
+      chunks: [SAMPLE_CHUNK],
+      classification: PT_CLASSIFICATION,
+      parentTrace: NOOP_TRACE,
+    });
+    expect(out).toEqual([]);
+  });
+
+  it('returns [] when schema rejects (item too long)', async () => {
+    mockGeminiOnce({
+      text: JSON.stringify({
+        followups: ['ok', 'x'.repeat(200), 'fine'],
+      }),
+    });
+    const { suggestFollowups } = await import('@/lib/rag/followups');
+    const out = await suggestFollowups({
+      query: 'q',
+      answer: 'a',
+      chunks: [SAMPLE_CHUNK],
+      classification: PT_CLASSIFICATION,
+      parentTrace: NOOP_TRACE,
+    });
+    expect(out).toEqual([]);
+  });
+
+  it('dedupes case-insensitively and removes echo of original query', async () => {
+    mockGeminiOnce({
+      text: JSON.stringify({
+        followups: [
+          'O que e a matriz de Kraljic?',
+          'Como aplicar Kraljic em PMEs?',
+          'COMO APLICAR KRALJIC EM PMES?',
+        ],
+      }),
+    });
+    const { suggestFollowups } = await import('@/lib/rag/followups');
+    const out = await suggestFollowups({
+      query: 'O que e a matriz de Kraljic?',
+      answer: 'E um framework...',
+      chunks: [SAMPLE_CHUNK],
+      classification: PT_CLASSIFICATION,
+      parentTrace: NOOP_TRACE,
+    });
+    expect(out).toEqual(['Como aplicar Kraljic em PMEs?']);
+  });
 });
