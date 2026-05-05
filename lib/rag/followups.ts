@@ -6,6 +6,7 @@ import type { Trace } from '@/lib/observability/types';
 
 const SNIPPET_MAX = 240;
 const ITEM_MAX_CHARS = 120;
+const TIMEOUT_MS = 3_000;
 
 const FollowupsSchema = z.object({
   followups: z.array(z.string().min(3).max(ITEM_MAX_CHARS)).min(1).max(3),
@@ -87,29 +88,36 @@ export async function suggestFollowups(input: SuggestFollowupsInput): Promise<st
       userBlock = [L.refusalQ, query].join('\n');
     }
 
-    const res = await ai.models.generateContent({
-      model,
-      contents: `${system}\n\n${userBlock}`,
-      config: {
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: 'object',
-          properties: {
-            followups: {
-              type: 'array',
-              items: { type: 'string' },
-              minItems: 1,
-              maxItems: 3,
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+    try {
+      const res = await ai.models.generateContent({
+        model,
+        contents: `${system}\n\n${userBlock}`,
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: 'object',
+            properties: {
+              followups: {
+                type: 'array',
+                items: { type: 'string' },
+                minItems: 1,
+                maxItems: 3,
+              },
             },
+            required: ['followups'],
           },
-          required: ['followups'],
+          maxOutputTokens: 512,
+          abortSignal: controller.signal,
         },
-        maxOutputTokens: 512,
-      },
-    });
-    const text = res.text ?? '';
-    const parsed = FollowupsSchema.parse(JSON.parse(text));
-    return postProcess(parsed.followups, query);
+      });
+      const text = res.text ?? '';
+      const parsed = FollowupsSchema.parse(JSON.parse(text));
+      return postProcess(parsed.followups, query);
+    } finally {
+      clearTimeout(timer);
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.warn('[rag/followups] returning [] due to error:', message);

@@ -191,4 +191,38 @@ describe('rag followups', () => {
     });
     expect(out).toEqual(['Como aplicar Kraljic em PMEs?']);
   });
+
+  it('aborts after 3s and returns []', async () => {
+    vi.useFakeTimers();
+    let abortReceived = false;
+    vi.doMock('@/lib/llm/gemini', () => ({
+      getGemini: () => ({
+        models: {
+          generateContent: vi
+            .fn()
+            .mockImplementation(async (arg: { config?: { abortSignal?: AbortSignal } }) => {
+              const signal = arg.config?.abortSignal;
+              return new Promise((_, reject) => {
+                signal?.addEventListener('abort', () => {
+                  abortReceived = true;
+                  reject(new Error('aborted'));
+                });
+              });
+            }),
+        },
+      }),
+    }));
+    const { suggestFollowups } = await import('@/lib/rag/followups');
+    const promise = suggestFollowups({
+      query: 'q',
+      answer: 'a',
+      chunks: [SAMPLE_CHUNK],
+      classification: PT_CLASSIFICATION,
+      parentTrace: NOOP_TRACE,
+    });
+    await vi.advanceTimersByTimeAsync(3100);
+    const out = await promise;
+    expect(out).toEqual([]);
+    expect(abortReceived).toBe(true);
+  });
 });
