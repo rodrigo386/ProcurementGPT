@@ -87,6 +87,7 @@ describe('POST /api/chat', () => {
 
     const runRagSpy = vi.fn().mockResolvedValue({
       classification: { theory: 'kraljic', intent: 'definition', language: 'pt', needsRetrieval: true },
+      chunks: [],
       sources: [{ number: 1, articleId: 'a', articleTitle: 'A Matriz de Kraljic', chunkId: 'c1' }],
       system: 'SYSTEM_PROMPT',
       user: 'USER_WITH_CONTEXT',

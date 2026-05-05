@@ -54,6 +54,7 @@ export async function runRag(query: string, opts: RunRagOpts = {}): Promise<RagR
 
   return {
     classification,
+    chunks,
     sources,
     system,
     user,

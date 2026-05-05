@@ -42,6 +42,7 @@ export type RagDebug = {
 
 export type RagResult = {
   classification: Classification;
+  chunks: RetrievedChunk[];
   sources: SourceRef[];
   system: string;
   user: string;
