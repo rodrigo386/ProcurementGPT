@@ -4,7 +4,7 @@ import { useEffect, useRef } from 'react';
 import { Message } from './Message';
 import type { ChatMessage } from '@/lib/rag/types';
 
-type Annotation = { traceId?: string };
+type Annotation = { traceId?: string; followups?: string[] };
 
 type UIMessage = ChatMessage & {
   id?: string;
@@ -16,6 +16,7 @@ type Props = {
   isLoading: boolean;
   sessionId?: string;
   initialRatings?: Map<string, 'up' | 'down'>;
+  onPickFollowup?: (text: string) => void;
 };
 
 const STICK_THRESHOLD_PX = 80;
@@ -26,7 +27,19 @@ function pickTraceId(m: UIMessage): string | undefined {
   return found?.traceId;
 }
 
-export function MessageList({ messages, isLoading, sessionId, initialRatings }: Props) {
+function pickFollowups(m: UIMessage): string[] | undefined {
+  const ann = m.annotations as Annotation[] | undefined;
+  const found = ann?.find((a) => Array.isArray(a?.followups));
+  return found?.followups;
+}
+
+export function MessageList({
+  messages,
+  isLoading,
+  sessionId,
+  initialRatings,
+  onPickFollowup,
+}: Props) {
   const ref = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -46,15 +59,20 @@ export function MessageList({ messages, isLoading, sessionId, initialRatings }: 
         {messages.map((m, i) => {
           const traceId = pickTraceId(m);
           const initialRating = traceId ? initialRatings?.get(traceId) : undefined;
+          const followups = pickFollowups(m);
+          const isLast = i === lastIdx;
           return (
             <Message
               key={m.id ?? i}
               role={m.role === 'assistant' ? 'assistant' : 'user'}
               content={m.content}
-              isStreaming={isLoading && i === lastIdx && m.role === 'assistant'}
+              isStreaming={isLoading && isLast && m.role === 'assistant'}
               traceId={traceId}
               sessionId={sessionId}
               initialRating={initialRating}
+              followups={followups}
+              isLast={isLast}
+              onPickFollowup={onPickFollowup}
             />
           );
         })}
