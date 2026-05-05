@@ -4,6 +4,7 @@ import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { requireEnv } from '@/lib/env';
 import { runRag } from '@/lib/rag';
 import { condenseQuery } from '@/lib/rag/condenser';
+import { suggestFollowups } from '@/lib/rag/followups';
 import type { ChatMessage } from '@/lib/rag/types';
 import { startTrace, flushAsync } from '@/lib/observability/langfuse';
 import { getCurrentUser } from '@/lib/auth';
@@ -106,6 +107,20 @@ export async function POST(req: Request): Promise<Response> {
         const aborted = finishReason === 'error';
         const level: TraceLevel = aborted ? 'WARNING' : 'DEFAULT';
         if (aborted) trace.setTag('aborted');
+
+        const shouldSuggest = !aborted && finishReason === 'stop' && text.length >= 20;
+        if (shouldSuggest) {
+          const followups = await suggestFollowups({
+            query: standalone,
+            answer: text,
+            chunks: rag.chunks,
+            classification: rag.classification,
+            parentTrace: trace,
+          });
+          data.appendMessageAnnotation({ followups });
+          if (followups.length === 0) trace.setTag('followups:empty');
+        }
+
         trace.end(
           { answer: text, sources: rag.sources, finishReason },
           level,

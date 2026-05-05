@@ -276,3 +276,190 @@ describe('POST /api/chat', () => {
     );
   });
 });
+
+describe('POST /api/chat — followups annotation', () => {
+  type OnFinishArg = {
+    text: string;
+    usage: { promptTokens: number; completionTokens: number };
+    finishReason: string;
+  };
+
+  function setupCommonMocks(opts: {
+    chunks: unknown[];
+    suggestSpy?: ReturnType<typeof vi.fn>;
+    traceTags?: string[];
+  }) {
+    vi.doMock('@/lib/auth', () => ({ getCurrentUser: vi.fn().mockResolvedValue({ id: 'u' }) }));
+    vi.doMock('@/lib/rate-limit', () => ({
+      checkChatRateLimit: vi.fn().mockResolvedValue({ allowed: true }),
+    }));
+    const trace = {
+      id: 't',
+      span: vi.fn(() => ({ end: vi.fn() })),
+      end: vi.fn(),
+      setMetadata: vi.fn(),
+      setTag: vi.fn((t: string) => opts.traceTags?.push(t)),
+    };
+    vi.doMock('@/lib/observability/langfuse', () => ({
+      startTrace: vi.fn().mockResolvedValue(trace),
+      flushAsync: vi.fn().mockResolvedValue(undefined),
+    }));
+    vi.doMock('@/lib/rag/condenser', () => ({ condenseQuery: vi.fn().mockResolvedValue('q') }));
+    vi.doMock('@/lib/rag', () => ({
+      runRag: vi.fn().mockResolvedValue({
+        classification: { theory: null, intent: 'definition', language: 'pt', needsRetrieval: true },
+        chunks: opts.chunks,
+        sources: [],
+        system: '',
+        user: '',
+        debug: { classifyMs: 0, embedMs: 0, vectorMs: 0, ftsMs: 0, rerankMs: 0, totalMs: 0 },
+      }),
+    }));
+    if (opts.suggestSpy) {
+      vi.doMock('@/lib/rag/followups', () => ({ suggestFollowups: opts.suggestSpy }));
+    }
+    return trace;
+  }
+
+  it('appends followups annotation in onFinish (deepen path)', async () => {
+    const traceTags: string[] = [];
+    const suggestSpy = vi.fn().mockResolvedValue(['Q1?', 'Q2?', 'Q3?']);
+    setupCommonMocks({
+      chunks: [
+        {
+          chunkId: 'c1',
+          articleId: 'a1',
+          content: 'conteudo',
+          ord: 0,
+          articleTitle: 'T',
+          vectorRank: 1,
+          ftsRank: 1,
+          rrfScore: 0.5,
+          rerankScore: 0.8,
+        },
+      ],
+      suggestSpy,
+      traceTags,
+    });
+
+    const onFinishCapture: { fn?: (a: OnFinishArg) => Promise<void> } = {};
+    const annotationSpy = vi.fn();
+    vi.doMock('ai', () => ({
+      streamText: vi.fn((cfg: { onFinish?: (a: OnFinishArg) => Promise<void> }) => {
+        onFinishCapture.fn = cfg.onFinish;
+        return { toDataStreamResponse: vi.fn(() => new Response('ok', { status: 200 })) };
+      }),
+      StreamData: class {
+        appendMessageAnnotation = annotationSpy;
+        close = vi.fn();
+      },
+    }));
+    vi.doMock('@ai-sdk/google', () => ({
+      createGoogleGenerativeAI: vi.fn(() => () => 'm'),
+    }));
+
+    const { POST } = await import('@/app/api/chat/route');
+    await POST(makeReq({ messages: [{ role: 'user', content: 'oi' }] }));
+    await onFinishCapture.fn!({
+      text: 'uma resposta longa o suficiente',
+      usage: { promptTokens: 1, completionTokens: 1 },
+      finishReason: 'stop',
+    });
+
+    expect(suggestSpy).toHaveBeenCalledOnce();
+    const followupsCall = annotationSpy.mock.calls.find((c) => 'followups' in (c[0] as object));
+    expect(followupsCall?.[0]).toEqual({ followups: ['Q1?', 'Q2?', 'Q3?'] });
+    expect(traceTags).not.toContain('followups:empty');
+  });
+
+  it('appends empty array and tags followups:empty when suggestFollowups returns []', async () => {
+    const traceTags: string[] = [];
+    setupCommonMocks({
+      chunks: [],
+      suggestSpy: vi.fn().mockResolvedValue([]),
+      traceTags,
+    });
+
+    const onFinishCapture: { fn?: (a: OnFinishArg) => Promise<void> } = {};
+    const annotationSpy = vi.fn();
+    vi.doMock('ai', () => ({
+      streamText: vi.fn((cfg: { onFinish?: (a: OnFinishArg) => Promise<void> }) => {
+        onFinishCapture.fn = cfg.onFinish;
+        return { toDataStreamResponse: vi.fn(() => new Response('ok', { status: 200 })) };
+      }),
+      StreamData: class {
+        appendMessageAnnotation = annotationSpy;
+        close = vi.fn();
+      },
+    }));
+    vi.doMock('@ai-sdk/google', () => ({ createGoogleGenerativeAI: vi.fn(() => () => 'm') }));
+
+    const { POST } = await import('@/app/api/chat/route');
+    await POST(makeReq({ messages: [{ role: 'user', content: 'oi' }] }));
+    await onFinishCapture.fn!({
+      text: 'uma resposta longa o suficiente',
+      usage: { promptTokens: 1, completionTokens: 1 },
+      finishReason: 'stop',
+    });
+
+    const fc = annotationSpy.mock.calls.find((c) => 'followups' in (c[0] as object));
+    expect(fc?.[0]).toEqual({ followups: [] });
+    expect(traceTags).toContain('followups:empty');
+  });
+
+  it('skips suggestFollowups when finishReason is not stop', async () => {
+    const suggestSpy = vi.fn();
+    setupCommonMocks({ chunks: [], suggestSpy });
+
+    const onFinishCapture: { fn?: (a: OnFinishArg) => Promise<void> } = {};
+    vi.doMock('ai', () => ({
+      streamText: vi.fn((cfg: { onFinish?: (a: OnFinishArg) => Promise<void> }) => {
+        onFinishCapture.fn = cfg.onFinish;
+        return { toDataStreamResponse: vi.fn(() => new Response('ok', { status: 200 })) };
+      }),
+      StreamData: class {
+        appendMessageAnnotation = vi.fn();
+        close = vi.fn();
+      },
+    }));
+    vi.doMock('@ai-sdk/google', () => ({ createGoogleGenerativeAI: vi.fn(() => () => 'm') }));
+
+    const { POST } = await import('@/app/api/chat/route');
+    await POST(makeReq({ messages: [{ role: 'user', content: 'oi' }] }));
+    await onFinishCapture.fn!({
+      text: 'qualquer resposta longa',
+      usage: { promptTokens: 1, completionTokens: 1 },
+      finishReason: 'error',
+    });
+
+    expect(suggestSpy).not.toHaveBeenCalled();
+  });
+
+  it('skips suggestFollowups when text is shorter than 20 chars', async () => {
+    const suggestSpy = vi.fn();
+    setupCommonMocks({ chunks: [], suggestSpy });
+
+    const onFinishCapture: { fn?: (a: OnFinishArg) => Promise<void> } = {};
+    vi.doMock('ai', () => ({
+      streamText: vi.fn((cfg: { onFinish?: (a: OnFinishArg) => Promise<void> }) => {
+        onFinishCapture.fn = cfg.onFinish;
+        return { toDataStreamResponse: vi.fn(() => new Response('ok', { status: 200 })) };
+      }),
+      StreamData: class {
+        appendMessageAnnotation = vi.fn();
+        close = vi.fn();
+      },
+    }));
+    vi.doMock('@ai-sdk/google', () => ({ createGoogleGenerativeAI: vi.fn(() => () => 'm') }));
+
+    const { POST } = await import('@/app/api/chat/route');
+    await POST(makeReq({ messages: [{ role: 'user', content: 'oi' }] }));
+    await onFinishCapture.fn!({
+      text: 'oi',
+      usage: { promptTokens: 1, completionTokens: 1 },
+      finishReason: 'stop',
+    });
+
+    expect(suggestSpy).not.toHaveBeenCalled();
+  });
+});
