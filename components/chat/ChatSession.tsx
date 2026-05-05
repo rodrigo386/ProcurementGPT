@@ -21,7 +21,7 @@ function toChatMessages(messages: AIMessage[]): ChatMessage[] {
 }
 
 export function ChatSession({ session, initialRatings, onMessagesChange }: Props) {
-  const { messages, input, setInput, handleSubmit, isLoading, stop } = useChat({
+  const { messages, input, setInput, handleSubmit, isLoading, stop, append } = useChat({
     api: '/api/chat',
     id: session.id,
     body: { sessionId: session.id },
@@ -48,6 +48,11 @@ export function ChatSession({ session, initialRatings, onMessagesChange }: Props
     },
   });
 
+  const onPickFollowup = (text: string) => {
+    if (isLoading) return;
+    void append({ role: 'user', content: text });
+  };
+
   return (
     <>
       {messages.length === 0 ? (
@@ -63,6 +68,7 @@ export function ChatSession({ session, initialRatings, onMessagesChange }: Props
           isLoading={isLoading}
           sessionId={session.id}
           initialRatings={initialRatings}
+          onPickFollowup={onPickFollowup}
         />
       )}
       <Composer
