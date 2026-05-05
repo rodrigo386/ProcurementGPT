@@ -27,4 +27,61 @@ describe('Message', () => {
     rerender(<Message role="assistant" content="texto" isStreaming={false} />);
     expect(container.querySelector('[data-streaming-dot]')).toBeFalsy();
   });
+
+  it('renders followup chips on last assistant message when not streaming', () => {
+    const { container } = render(
+      <Message
+        role="assistant"
+        content="resposta"
+        isStreaming={false}
+        isLast
+        followups={['A?', 'B?']}
+        onPickFollowup={() => {}}
+      />,
+    );
+    const buttons = container.querySelectorAll('button');
+    expect(buttons.length).toBe(2);
+  });
+
+  it('does NOT render chips when not last', () => {
+    const { container } = render(
+      <Message
+        role="assistant"
+        content="r"
+        isStreaming={false}
+        isLast={false}
+        followups={['A?']}
+        onPickFollowup={() => {}}
+      />,
+    );
+    expect(container.querySelectorAll('button').length).toBe(0);
+  });
+
+  it('does NOT render chips while streaming', () => {
+    const { container } = render(
+      <Message
+        role="assistant"
+        content="r"
+        isStreaming={true}
+        isLast
+        followups={['A?']}
+        onPickFollowup={() => {}}
+      />,
+    );
+    expect(container.querySelectorAll('button').length).toBe(0);
+  });
+
+  it('does NOT render chips for user role', () => {
+    const { container } = render(
+      <Message
+        role="user"
+        content="r"
+        isStreaming={false}
+        isLast
+        followups={['A?']}
+        onPickFollowup={() => {}}
+      />,
+    );
+    expect(container.querySelectorAll('button').length).toBe(0);
+  });
 });

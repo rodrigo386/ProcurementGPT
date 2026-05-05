@@ -3,6 +3,7 @@
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { MessageActions } from './MessageActions';
+import { FollowupChips } from './FollowupChips';
 
 type Props = {
   role: 'user' | 'assistant';
@@ -11,9 +12,22 @@ type Props = {
   traceId?: string;
   sessionId?: string;
   initialRating?: 'up' | 'down';
+  followups?: string[];
+  isLast?: boolean;
+  onPickFollowup?: (text: string) => void;
 };
 
-export function Message({ role, content, isStreaming, traceId, sessionId, initialRating }: Props) {
+export function Message({
+  role,
+  content,
+  isStreaming,
+  traceId,
+  sessionId,
+  initialRating,
+  followups,
+  isLast,
+  onPickFollowup,
+}: Props) {
   if (role === 'user') {
     return (
       <li className="flex justify-end">
@@ -38,6 +52,9 @@ export function Message({ role, content, isStreaming, traceId, sessionId, initia
         ) : null}
         {!isStreaming && traceId && sessionId ? (
           <MessageActions traceId={traceId} sessionId={sessionId} initialRating={initialRating} />
+        ) : null}
+        {!isStreaming && isLast && followups && followups.length > 0 && onPickFollowup ? (
+          <FollowupChips followups={followups} onPick={onPickFollowup} />
         ) : null}
       </div>
     </li>
