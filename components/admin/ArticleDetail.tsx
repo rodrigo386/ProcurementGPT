@@ -16,7 +16,21 @@ export type AdminArticle = {
   source_chars: number;
 };
 
-type Chunk = { id: string; ord: number; content: string };
+type ChunkKind = 'text' | 'table' | 'figure';
+
+type ChunkMetadata = {
+  kind?: ChunkKind;
+  page?: number;
+  caption?: string;
+  figureKind?: 'flow' | 'chart' | 'diagram';
+};
+
+type Chunk = {
+  id: string;
+  ord: number;
+  content: string;
+  metadata: ChunkMetadata | null;
+};
 
 type Props = {
   article: AdminArticle | null;
@@ -38,7 +52,7 @@ export function ArticleDetail({ article, onDeleted }: Props) {
     (async () => {
       const { data } = await supabaseBrowser()
         .from('chunks')
-        .select('id, ord, content')
+        .select('id, ord, content, metadata')
         .eq('article_id', article.id)
         .order('ord', { ascending: true });
       if (cancelled) return;
@@ -94,21 +108,37 @@ export function ArticleDetail({ article, onDeleted }: Props) {
         {!loading && chunks.length === 0 && (
           <p className="text-xs text-muted-foreground">Nenhum chunk disponível.</p>
         )}
-        {chunks.map((c) => (
-          <details
-            key={c.id}
-            className="bg-muted/40 rounded-md border-l-2 border-border text-xs leading-relaxed"
-          >
-            <summary className="cursor-pointer p-2 hover:bg-muted/60">
-              <span className="text-muted-foreground mr-2 tabular-nums">#{c.ord}</span>
-              {c.content.slice(0, 200)}
-              {c.content.length > 200 && '…'}
-            </summary>
-            <pre className="mt-2 px-3 pb-3 whitespace-pre-wrap font-mono text-[11px]">
-              {c.content}
-            </pre>
-          </details>
-        ))}
+        {chunks.map((c) => {
+          const kind: ChunkKind = c.metadata?.kind ?? 'text';
+          const page = c.metadata?.page;
+          const badgeClass =
+            kind === 'table'
+              ? 'bg-blue-100 text-blue-900 dark:bg-blue-900/40 dark:text-blue-100'
+              : kind === 'figure'
+                ? 'bg-purple-100 text-purple-900 dark:bg-purple-900/40 dark:text-purple-100'
+                : 'bg-muted text-muted-foreground';
+          return (
+            <details
+              key={c.id}
+              className="bg-muted/40 rounded-md border-l-2 border-border text-xs leading-relaxed"
+            >
+              <summary className="cursor-pointer p-2 hover:bg-muted/60">
+                <span className={`mr-2 inline-block rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide ${badgeClass}`}>
+                  {kind}
+                </span>
+                <span className="text-muted-foreground mr-2 tabular-nums">#{c.ord}</span>
+                {page !== undefined && (
+                  <span className="text-muted-foreground mr-2 tabular-nums">p.{page}</span>
+                )}
+                {c.content.slice(0, 200)}
+                {c.content.length > 200 && '…'}
+              </summary>
+              <pre className="mt-2 px-3 pb-3 whitespace-pre-wrap font-mono text-[11px]">
+                {c.content}
+              </pre>
+            </details>
+          );
+        })}
       </div>
       <ConfirmDelete
         open={confirmOpen}
