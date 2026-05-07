@@ -65,4 +65,12 @@ Run this checklist before sending a beta invite. Updated 2026-05-04.
 - [ ] Langfuse: trace tem span `suggest-followups` com `mode=deepen` ou `mode=redirect` e `count` correspondente
 - [ ] Quando o helper retorna `[]` (zod falha, timeout 3 s, etc.), trace ganha tag `followups:empty` e turno principal completa normalmente
 
+## Sub-projeto 12 — Multimodal Ingestion
+
+- [ ] Re-ingerir 1 PDF com tabela conhecida (ex: Kraljic): `/admin/articles` mostra ≥1 chunk com badge azul `table`; abrir o chunk mostra markdown da tabela com células corretas.
+- [ ] Re-ingerir 1 PDF com fluxograma: `/admin/articles` mostra ≥1 chunk com badge roxo `figure`; abrir mostra description coerente do fluxo.
+- [ ] No `/chat`, query "matriz de Kraljic" recupera resposta que reflete os labels da tabela (não só parágrafos próximos).
+- [ ] Erro path: ingerir PDF corrompido → ou o job vira `error` com mensagem clara, ou completa com `articles.metadata.parser='text-only-fallback'` (verificar via Supabase dashboard).
+- [ ] DOCX com tabela: `/admin/articles` mostra chunk `table`; markdown bem-formado com header divider.
+
 If any item fails, file an issue and fix before sending invites.

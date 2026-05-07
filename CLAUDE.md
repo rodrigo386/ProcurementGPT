@@ -42,6 +42,7 @@ removida em 2026-05-02). Audiência: gestores de compras brasileiros (PT-BR prim
 | 9 | `feedback-loop-complete` | 👍/👎 inline em cada resposta do assistant via `<MessageActions/>` (lucide ThumbsUp/ThumbsDown), 👎 expande textarea inline para comentário (≤1000 chars). Migration 0008: `message_feedback` + 4 RLS owner-only policies + `unique(user_id, trace_id)` para upsert flip. `Trace.id` exposto pelo wrapper Langfuse (real ou `crypto.randomUUID()` em no-op). `/api/chat` adiciona `traceId` à message annotation; client passa de volta em `POST /api/feedback` (Node, zod-validated, 401/400/404/500/204). `lib/feedback.recordFeedback` UPSERTa + chama `scoreTrace` fire-and-forget (`name: user-feedback`, `value: 1` ou `-1`). `useChatSessionsRemote` hidrata `ratings: Map<traceId, rating>` ao trocar sessão. Header ganha link mailto "Feedback geral" (hardcoded até decidir branding). |
 | 10 | `admin-chunks-visibility-complete` | `/admin/articles` detail pane lista TODOS os chunks por artigo (sem `limit(20)`) e mostra "N chunks · ≈X% absorvido" no header. % = `sum(chunk.content.length) / source_chars`; pode exceder 100% por causa do overlap de 400 chars (prefix `≈` deixa explícito). Migration 0009 adiciona `articles.source_chars int NOT NULL` com backfill inline (`length(raw_md)`). Pipeline grava `source_chars: parsed.text.length` no insert do artigo. Chunks renderizam como `<details>` HTML nativo (sem dep nova; expand/collapse com a11y de browser). |
 | 11 | `followup-questions-complete` | `/api/chat` estende `onFinish` com `suggestFollowups` (Gemini Flash Lite, JSON via zod, abort 3s, fail-soft → `[]`). Dois modos por `chunks.length`: **deepen** (system prompt PT/EN ancorado em títulos + snippets de 240 chars) e **redirect** (PT/EN — sugere reformulações para tópicos conhecidos de procurement; sem material no prompt). Span `suggest-followups` aninhado em `chat.turn` (`level:WARNING` em erro). Tag de trace `followups:empty` quando array sai vazio. Annotation `{ followups: string[] }` no SSE; `MessageList` lê via `pickFollowups`. `<FollowupChips/>` (button row, a11y, theme-aware) renderiza só na **última** mensagem do assistant da sessão (não persistido em `sessions.messages`). Click invoca `useChat.append({ role:'user', content })`, virando turno normal (rate-limit per-user já cobre). Skip do passo se `finishReason !== 'stop'` ou `text.length < 20`. `RagResult` agora expõe `chunks: RetrievedChunk[]` (refactor aditivo). |
+| 12 | `multimodal-ingestion-complete` | Ingestão PDF agora via Gemini multimodal nativo (1 chamada por artigo, ~$0.02). `lib/ingest/multimodal-parse.ts` com zod schema + retry 1x + AbortController 120s; >20MB usa Files API (`ai.files.upload`). `lib/ingest/parse-source.ts` orquestra dispatch (PDF→multimodal-com-fallback, DOCX→tables-aware, TXT→trivial). Chunker ganha `chunkBlocks` que emite 1 chunk por table/figure (sem split mesmo >3200) e agrupa text contíguo. `chunks.metadata` ganha `kind`/`page`/`caption`/`figureKind` (sem migration — JSONB). `articles.metadata.parser` registra `multimodal`/`text-only-fallback`/`docx-tables`/`text-only`. `/admin/articles` mostra badge colorido por kind + número de página. Eval +5 pares (tabelas Kraljic, fluxos S2P/stakeholders, gráfico spend); CI gate `recall@5 ≥ 0.85` mantido sobre 30 pares (verificação após backfill manual dos 4 artigos atuais). |
 
 **Milestone 1 closed.**
 
@@ -110,12 +111,16 @@ Roadmap completo em `docs/product/beta-readiness.md`. Roadmap B2B (Milestone 3+)
   /db
     storage.ts                          (upload/download/delete wrappers para bucket ingest-uploads)
   /ingest                               (TS port da pipeline; scripts/ingest.py mantido como legacy)
-    types.ts                            (JobStatus, JobStage, IngestJob)
+    types.ts                            (JobStatus, JobStage, IngestJob, Block, ParsedSource, ChunkKind, ChunkRow)
     hash.ts                             (sha256 helper)
-    parser.ts                           (pdf-parse@1.1.1 + mammoth + fs.readFile, <500-char OCR guard)
-    chunker.ts                          (paragraph + sliding-window, MAX 3200, OVERLAP 400)
+    parser.ts                           (parsePdfTextOnly + parseDocxTextOnly + parseTxt; parseFile @deprecated mime-dispatch wrapper)
+    multimodal-parse.ts                 (parsePdfMultimodal: Gemini multimodal, inline + Files API via ai.files.upload, zod retry, abort 120s)
+    docx-parse.ts                       (parseDocxWithTables: mammoth.convertToHtml + table extraction)
+    html-table.ts                       (htmlTableToMarkdown utility)
+    parse-source.ts                     (parseSource dispatcher: PDF→multimodal-with-fallback, DOCX→tables-aware, TXT→trivial)
+    chunker.ts                          (chunkText + chunkBlocks; paragraph-aware splitter shared internally)
     metadata.ts                         (title/author/language/date heurísticas)
-    pipeline.ts                         (runPipeline orquestrador end-to-end)
+    pipeline.ts                         (runPipeline orquestrador end-to-end; dispatcha por parsed.kind)
 /middleware.ts                          (gates /chat + /admin via Supabase session check)
 /components
   /chat (ChatRoot, ChatSession, Sidebar, Header, EmptyState, MessageList, Message, Composer)
@@ -234,6 +239,14 @@ APP_ENV=local                  # sub-projeto 8 — drives env:<value> tag in Lan
 - Persistir `followups` em `sessions.messages` JSONB — sub-projeto 11 deliberadamente NÃO persiste. Vivem só na annotation SSE do turno atual e desaparecem quando o próximo turno renderiza. Se um sub-projeto futuro precisar de chips em mensagens passadas, fazer schema change explícito.
 - Esquecer de incluir `chunks` no mock de `runRag` em testes novos do `/api/chat` — sub-projeto 11 adicionou `chunks: RetrievedChunk[]` ao `RagResult`. Padrão: passar `chunks: []` quando o retrieval foi pulado, ou um array de `RetrievedChunk` com `content` quando o teste exercita o caminho `deepen` do `suggestFollowups`.
 - Bloquear o response do `/api/chat` em falha do `suggestFollowups` — o helper é fail-soft por design, retorna `[]` em qualquer erro (Gemini, JSON, zod, abort 3s) e o `onFinish` segue normalmente. Não envolver a chamada em handler que rejeite.
+- Chamar `parseFile` em código novo — o export é `@deprecated` desde sub-projeto 12. Use `parseSource` (`lib/ingest/parse-source.ts`) que dispatcha multimodal-with-fallback. `parseFile` só fica para retrocompat interna.
+- Esquecer de incluir `metadata.kind` no mock de chunk em testes novos do `/admin/articles` ou pipeline — sub-projeto 12 adicionou kind/page/caption/figureKind no JSONB. Padrão para text: `{ kind: 'text' }`. Tests legacy usam metadata vazia; UI defaultiza para `text`.
+- Tentar split em chunks de tabela ou figure — `chunkBlocks` deliberadamente não split tabela/figure mesmo se passar de 3200 chars. Tabela quebrada perde semântica; aceita-se chunk grande.
+- Awaitar response do `/api/admin/ingest/run/[jobId]` no cliente quando o pipeline está usando multimodal — a chamada multimodal pode levar 30-90s. Padrão fire-and-forget existente já cobre, mas qualquer mudança que introduza await vai bloquear UI.
+- Confiar em `keep_source` na tabela `ingestion_jobs` — não existe. Sub-projeto 12 deliberadamente NÃO adicionou. Se reprocessamento massivo virar dor, sub-projeto futuro adiciona migration + flag.
+- Em retries do Gemini multimodal: o retry só dispara em `z.ZodError` ou `SyntaxError`. Erros de rede / 5xx vão direto pro fallback texto-only no `parseSource` — não ficam looping.
+- Esquecer que o `parser` field em `articles.metadata` é o sinal de auditoria — quando todo PDF está caindo em `text-only-fallback`, o multimodal está com problema; investigar antes de assumir que o gain de tabelas/figuras está chegando.
+- Confundir SDK do `@google/genai`: o método de upload é `ai.files.upload({ file: Blob, config: { mimeType } })` — NÃO `ai.files.create`. Mock antigo usava `create` e o teste passava, mas em produção quebra com TypeError. Verificar tipos no `node_modules/@google/genai/dist/node/node.d.ts` se houver dúvida.
 
 ## Fluxo de chat end-to-end (sub-projetos 1-7)
 ```
