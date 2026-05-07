@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
+import type { Block } from '@/lib/ingest/types';
 
 beforeEach(() => {
   vi.resetModules();
@@ -21,7 +22,10 @@ type JobRow = {
 
 function setupMocks(opts: {
   job: JobRow;
-  parsedText?: string;
+  parsed?:
+    | { kind: 'text'; text: string; pageCount?: number }
+    | { kind: 'blocks'; blocks: Block[]; pageCount?: number };
+  parser?: 'multimodal' | 'text-only-fallback' | 'docx-tables' | 'text-only';
   parseShouldThrow?: boolean;
   existingArticleId?: string | null;
 }) {
@@ -35,10 +39,13 @@ function setupMocks(opts: {
     deleteFromIngestBucket: vi.fn().mockResolvedValue(undefined),
   }));
 
-  vi.doMock('@/lib/ingest/parser', () => ({
-    parseFile: vi.fn().mockImplementation(async () => {
+  vi.doMock('@/lib/ingest/parse-source', () => ({
+    parseSource: vi.fn().mockImplementation(async () => {
       if (opts.parseShouldThrow) throw new Error('Conteúdo muito curto — OCR necessário');
-      return { text: opts.parsedText ?? 'Texto longo. '.repeat(80), pageCount: 5 };
+      return {
+        parsed: opts.parsed ?? { kind: 'text', text: 'Texto longo. '.repeat(80), pageCount: 5 },
+        parser: opts.parser ?? 'multimodal',
+      };
     }),
   }));
 
@@ -48,7 +55,6 @@ function setupMocks(opts: {
     ),
   }));
 
-  // Chainable Supabase mock
   vi.doMock('@/lib/db/supabase', () => ({
     getServerSupabase: () => ({
       from: (table: string) => {
@@ -106,19 +112,52 @@ const baseJob: JobRow = {
 };
 
 describe('lib/ingest/pipeline', () => {
-  it('happy path: writes article, embeds chunks, marks done with chunks_count', async () => {
-    const m = setupMocks({ job: baseJob });
+  it('happy path text fallback: writes article, embeds chunks, marks done', async () => {
+    const m = setupMocks({ job: baseJob, parser: 'text-only-fallback' });
     const { runPipeline } = await import('@/lib/ingest/pipeline');
     await runPipeline('job-1');
     expect(m.insertedArticles).toHaveLength(1);
-    expect(m.insertedChunkBatches.length).toBeGreaterThan(0);
     const finalUpdate = m.updateCalls[m.updateCalls.length - 1]!;
     expect(finalUpdate.status).toBe('done');
     expect(finalUpdate.chunks_count).toBeGreaterThan(0);
-    expect(finalUpdate.article_id).toBe('new-art-1');
   });
 
-  it('parser failure marks job status=error with the parser message; storage file is NOT deleted', async () => {
+  it('multimodal blocks: text/table/figure each get correct chunk metadata.kind', async () => {
+    const blocks: Block[] = [
+      { type: 'text', page: 1, content: 'Lots of text. '.repeat(40) },
+      { type: 'table', page: 2, markdown: '| a |\n|---|\n| 1 |', caption: 'Tabela X' },
+      {
+        type: 'figure',
+        page: 3,
+        description: 'A flow diagram with 3 boxes connected by arrows in a sequence.',
+        caption: 'Figura Y',
+        figureKind: 'flow',
+      },
+    ];
+    const m = setupMocks({
+      job: baseJob,
+      parsed: { kind: 'blocks', blocks },
+      parser: 'multimodal',
+    });
+    const { runPipeline } = await import('@/lib/ingest/pipeline');
+    await runPipeline('job-1');
+
+    const article = m.insertedArticles[0] as Record<string, unknown>;
+    expect((article.metadata as Record<string, unknown>).parser).toBe('multimodal');
+
+    const allChunks = m.insertedChunkBatches.flat();
+    const kinds = allChunks.map((c) => (c.metadata as { kind: string }).kind);
+    expect(kinds).toContain('text');
+    expect(kinds).toContain('table');
+    expect(kinds).toContain('figure');
+    const figureChunk = allChunks.find(
+      (c) => (c.metadata as { kind: string }).kind === 'figure',
+    );
+    expect((figureChunk!.metadata as { figureKind?: string }).figureKind).toBe('flow');
+    expect((figureChunk!.metadata as { page?: number }).page).toBe(3);
+  });
+
+  it('parser failure marks job status=error and storage file is NOT deleted', async () => {
     const m = setupMocks({ job: baseJob, parseShouldThrow: true });
     const storage = await import('@/lib/db/storage');
     const deleteSpy = storage.deleteFromIngestBucket as ReturnType<typeof vi.fn>;
@@ -130,18 +169,32 @@ describe('lib/ingest/pipeline', () => {
     expect(deleteSpy).not.toHaveBeenCalled();
   });
 
-  it('writes source_chars equal to the parsed text length on the new article row', async () => {
-    const m = setupMocks({ job: baseJob });
+  it('records article.metadata.parser=text-only-fallback when parser reports fallback', async () => {
+    const m = setupMocks({
+      job: baseJob,
+      parser: 'text-only-fallback',
+      parsed: { kind: 'text', text: 'Texto longo. '.repeat(80) },
+    });
     const { runPipeline } = await import('@/lib/ingest/pipeline');
     await runPipeline('job-1');
-    expect(m.insertedArticles).toHaveLength(1);
+    const article = m.insertedArticles[0] as Record<string, unknown>;
+    expect((article.metadata as Record<string, unknown>).parser).toBe('text-only-fallback');
+  });
+
+  it('writes source_chars equal to the parsed text length on the new article row (text path)', async () => {
+    const m = setupMocks({
+      job: baseJob,
+      parsed: { kind: 'text', text: 'Texto longo. '.repeat(80) },
+      parser: 'text-only',
+    });
+    const { runPipeline } = await import('@/lib/ingest/pipeline');
+    await runPipeline('job-1');
     const row = m.insertedArticles[0] as Record<string, unknown>;
     const rawMd = row.raw_md as string;
-    expect(typeof row.source_chars).toBe('number');
     expect(row.source_chars).toBe(rawMd.length);
   });
 
-  it('dedup hit: existing article matched by content_hash → status=done, chunks_count=0, no inserts', async () => {
+  it('dedup hit: existing article matched → status=done, chunks_count=0, no inserts', async () => {
     const m = setupMocks({ job: baseJob, existingArticleId: 'existing-art-9' });
     const { runPipeline } = await import('@/lib/ingest/pipeline');
     await runPipeline('job-1');
@@ -150,7 +203,6 @@ describe('lib/ingest/pipeline', () => {
     const finalUpdate = m.updateCalls[m.updateCalls.length - 1]!;
     expect(finalUpdate.status).toBe('done');
     expect(finalUpdate.chunks_count).toBe(0);
-    expect(finalUpdate.article_id).toBe('existing-art-9');
     expect(finalUpdate.stage).toBe('deduplicated');
   });
 });

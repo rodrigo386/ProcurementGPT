@@ -1,10 +1,11 @@
 import { getServerSupabase } from '@/lib/db/supabase';
 import { downloadFromIngestBucket, deleteFromIngestBucket } from '@/lib/db/storage';
-import { parseFile } from '@/lib/ingest/parser';
-import { chunkText } from '@/lib/ingest/chunker';
+import { parseSource } from '@/lib/ingest/parse-source';
+import { chunkText, chunkBlocks } from '@/lib/ingest/chunker';
 import { extractMetadata } from '@/lib/ingest/metadata';
 import { sha256 } from '@/lib/ingest/hash';
 import { embed } from '@/lib/llm/voyage';
+import type { ChunkRow } from '@/lib/ingest/types';
 
 const EMBED_BATCH = 16;
 
@@ -27,13 +28,29 @@ export async function runPipeline(jobId: string): Promise<void> {
 
     await update({ status: 'running', stage: 'parsing', progress: 5 });
     const blob = await downloadFromIngestBucket(job.storage_path);
-    const parsed = await parseFile(blob, job.mime_type, job.filename);
+    const { parsed, parser } = await parseSource(blob, job.mime_type, job.filename);
 
     await update({ stage: 'chunking', progress: 20 });
-    const chunks = chunkText(parsed.text);
-    if (chunks.length === 0) throw new Error('Nenhum chunk gerado a partir do texto');
+    const chunkRows: ChunkRow[] =
+      parsed.kind === 'blocks'
+        ? chunkBlocks(parsed.blocks)
+        : chunkText(parsed.text).map((content) => ({
+            content,
+            metadata: { kind: 'text' as const },
+          }));
+    if (chunkRows.length === 0) throw new Error('Nenhum chunk gerado a partir do conteúdo');
 
-    const meta = extractMetadata(parsed.text, job.filename);
+    // Source text used by metadata extraction + raw_md + source_chars accounting:
+    // for blocks, concat all text-block contents; for text path, use the text directly.
+    const sourceText =
+      parsed.kind === 'text'
+        ? parsed.text
+        : parsed.blocks
+            .filter((b): b is Extract<typeof b, { type: 'text' }> => b.type === 'text')
+            .map((b) => b.content)
+            .join('\n\n');
+
+    const meta = extractMetadata(sourceText, job.filename);
     const hash = sha256(blob);
 
     const { data: existing } = await sb
@@ -62,9 +79,13 @@ export async function runPipeline(jobId: string): Promise<void> {
         author: meta.author,
         language: meta.language,
         published_at: meta.date,
-        source_chars: parsed.text.length,
-        raw_md: parsed.text,
-        metadata: { content_hash: hash, source_filename: job.filename },
+        source_chars: sourceText.length,
+        raw_md: sourceText,
+        metadata: {
+          content_hash: hash,
+          source_filename: job.filename,
+          parser,
+        },
       })
       .select('id')
       .single();
@@ -74,32 +95,44 @@ export async function runPipeline(jobId: string): Promise<void> {
 
     await update({ stage: 'embedding', progress: 40 });
     const embeddings: number[][] = [];
-    for (let i = 0; i < chunks.length; i += EMBED_BATCH) {
-      const slice = chunks.slice(i, i + EMBED_BATCH);
+    for (let i = 0; i < chunkRows.length; i += EMBED_BATCH) {
+      const slice = chunkRows.slice(i, i + EMBED_BATCH).map((r) => r.content);
       const out = await embed(slice, 'document');
       embeddings.push(...out);
-      const pct = 40 + Math.floor(((i + slice.length) / chunks.length) * 50);
+      const pct = 40 + Math.floor(((i + slice.length) / chunkRows.length) * 50);
       await update({ progress: Math.min(pct, 90) });
     }
 
     await update({ stage: 'inserting', progress: 92 });
-    const rows = chunks.map((text, idx) => ({
+    const rows = chunkRows.map((r, idx) => ({
       article_id: article.id,
       ord: idx,
-      content: text,
+      content: r.content,
       embedding: embeddings[idx],
-      metadata: { source_filename: job.filename },
+      metadata: { source_filename: job.filename, ...r.metadata },
     }));
     for (let i = 0; i < rows.length; i += 50) {
       await sb.from('chunks').insert(rows.slice(i, i + 50));
     }
 
     await deleteFromIngestBucket(job.storage_path);
+
+    const counts = chunkRows.reduce(
+      (acc, r) => {
+        acc[r.metadata.kind] = (acc[r.metadata.kind] ?? 0) + 1;
+        return acc;
+      },
+      { text: 0, table: 0, figure: 0 } as Record<string, number>,
+    );
+    console.info(
+      `[ingest/pipeline] done articleId=${article.id} parser=${parser} text=${counts.text} table=${counts.table} figure=${counts.figure} total=${chunkRows.length}`,
+    );
+
     await update({
       status: 'done',
       stage: null,
       progress: 100,
-      chunks_count: chunks.length,
+      chunks_count: chunkRows.length,
       article_id: article.id,
       finished_at: new Date().toISOString(),
     });
@@ -110,6 +143,5 @@ export async function runPipeline(jobId: string): Promise<void> {
       error_message: message,
       finished_at: new Date().toISOString(),
     });
-    // Storage file kept on failure (B2 retention policy) so admin can retry.
   }
 }
