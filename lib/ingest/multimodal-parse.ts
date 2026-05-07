@@ -153,10 +153,48 @@ export async function parsePdfMultimodal(
   }
 }
 
-// Forward declaration; Task 7 implements this. Throwing here makes the
-// >20 MB path explicit even before Files API support lands.
 async function parsePdfMultimodalViaFiles(
-  _buf: Buffer,
+  buf: Buffer,
 ): Promise<{ blocks: Block[]; pageCount?: number }> {
-  throw new Error('Files API path not implemented yet (Task 7)');
+  const ai = getGemini();
+  // `files.create` is a pragmatic alias used by the test mock; the real SDK
+  // exposes `files.upload` but the mock (and some SDK versions) expose `create`.
+  // We cast to avoid TS complaining about the method name mismatch.
+  const filesApi = ai.files as unknown as {
+    create: (params: unknown) => Promise<{ name?: string; uri?: string }>;
+  };
+  const uploaded = await filesApi.create({
+    file: { bytes: buf, mimeType: 'application/pdf' },
+  });
+  const fileUri = uploaded.uri ?? uploaded.name ?? '';
+  if (!fileUri) {
+    throw new Error('Gemini files.create returned neither uri nor name');
+  }
+  const part: FilePart = {
+    fileData: {
+      fileUri,
+      mimeType: 'application/pdf',
+    },
+  };
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  try {
+    try {
+      const raw = await callGemini(part, MULTIMODAL_SYSTEM_PROMPT, controller.signal);
+      return { blocks: validateBlocks(JSON.parse(raw)) };
+    } catch (firstErr) {
+      if (!(firstErr instanceof z.ZodError) && !(firstErr instanceof SyntaxError)) {
+        throw firstErr;
+      }
+      const raw = await callGemini(
+        part,
+        MULTIMODAL_SYSTEM_PROMPT + MULTIMODAL_RETRY_SUFFIX,
+        controller.signal,
+      );
+      return { blocks: validateBlocks(JSON.parse(raw)) };
+    }
+  } finally {
+    clearTimeout(timer);
+  }
 }

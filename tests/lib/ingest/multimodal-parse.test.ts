@@ -159,3 +159,50 @@ describe('parsePdfMultimodal — happy and retry', () => {
     expect(m.generateContent).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('parsePdfMultimodal — Files API (>20MB)', () => {
+  const validJson = JSON.stringify({
+    blocks: [{ type: 'text', page: 1, content: 'Big PDF text.' }],
+  });
+
+  it('uploads via Files API when buffer exceeds 20MB', async () => {
+    const m = setupGeminiMock([{ text: validJson }]);
+    const { parsePdfMultimodal } = await import('@/lib/ingest/multimodal-parse');
+    const big = Buffer.alloc(21 * 1024 * 1024, 0x42);
+    const out = await parsePdfMultimodal(big);
+    expect(out.blocks).toHaveLength(1);
+    expect(m.filesCreate).toHaveBeenCalledTimes(1);
+    // Confirm fileData (not inlineData) was passed in the second call
+    const arg = m.generateContent.mock.calls[0]![0];
+    const parts = arg.contents as Array<Record<string, unknown>>;
+    expect(parts.some((p) => 'fileData' in p)).toBe(true);
+  });
+
+  it('Files API path also retries once on zod fail', async () => {
+    const m = setupGeminiMock([
+      { text: '{"blocks": []}' },
+      { text: validJson },
+    ]);
+    const { parsePdfMultimodal } = await import('@/lib/ingest/multimodal-parse');
+    const big = Buffer.alloc(21 * 1024 * 1024, 0x42);
+    const out = await parsePdfMultimodal(big);
+    expect(out.blocks).toHaveLength(1);
+    expect(m.generateContent).toHaveBeenCalledTimes(2);
+    expect(m.filesCreate).toHaveBeenCalledTimes(1); // upload only once
+  });
+
+  it('Files API upload failure surfaces as throw (caller falls back)', async () => {
+    const filesCreate = vi.fn().mockRejectedValue(new Error('files API quota'));
+    const generateContent = vi.fn();
+    vi.doMock('@/lib/llm/gemini', () => ({
+      getGemini: () => ({ models: { generateContent }, files: { create: filesCreate } }),
+    }));
+    vi.doMock('@/lib/env', () => ({
+      requireEnv: vi.fn().mockReturnValue('gemini-3.1-flash-lite-preview'),
+    }));
+    const { parsePdfMultimodal } = await import('@/lib/ingest/multimodal-parse');
+    const big = Buffer.alloc(21 * 1024 * 1024, 0x42);
+    await expect(parsePdfMultimodal(big)).rejects.toThrow(/files API quota/);
+    expect(generateContent).not.toHaveBeenCalled();
+  });
+});
