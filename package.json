@@ -13,6 +13,7 @@
     "db:migrate": "supabase db push",
     "db:types": "supabase gen types typescript --linked > lib/db/database.types.ts",
     "format": "prettier --write .",
+    "articles:reclassify": "tsx scripts/reclassify.ts",
     "rag:query": "tsx scripts/rag-query.ts",
     "rag:eval": "tsx scripts/eval/run.ts"
   },
