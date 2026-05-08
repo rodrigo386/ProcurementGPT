@@ -1,38 +1,43 @@
 [
-  { "id": "kraljic-definition", "intent": "definition", "query": "O que é a matriz de Kraljic?", "expected_titles": ["A Matriz de Kraljic"] },
-  { "id": "kraljic-quadrants", "intent": "definition", "query": "Quais são os quatro quadrantes da matriz de Kraljic?", "expected_titles": ["A Matriz de Kraljic"] },
-  { "id": "kraljic-application", "intent": "application", "query": "Como aplicar a matriz de Kraljic em um varejo de alimentos?", "expected_titles": ["A Matriz de Kraljic"] },
-  { "id": "kraljic-comparison", "intent": "comparison", "query": "Qual a diferença entre a matriz de Kraljic e uma análise ABC?", "expected_titles": ["A Matriz de Kraljic"] },
-  { "id": "kraljic-edge", "intent": "edge", "query": "A matriz de Kraljic é útil para itens de baixo volume e baixo risco?", "expected_titles": ["A Matriz de Kraljic"] },
+  { "id": "kraljic-curva-abc", "intent": "application", "query": "Como a curva ABC se aplica à gestão de compras?", "expected_titles": ["Análise do Processo de Compras de Itens Classe C Utilizando a Curva ABC"] },
+  { "id": "kraljic-categoria-c", "intent": "application", "query": "Como gerenciar itens de baixo valor na categoria C?", "expected_titles": ["Análise do Processo de Compras de Itens Classe C Utilizando a Curva ABC"] },
+  { "id": "kraljic-custos-recursos", "intent": "definition", "query": "Como teorias de custos e recursos influenciam a cadeia de suprimentos?", "expected_titles": ["Análise da Gestão da Cadeia de Suprimentos sob Teorias de Custos e Recursos"] },
+  { "id": "kraljic-portfolio", "intent": "definition", "query": "O que é categorização de itens em portfolio de compras?", "expected_titles": ["Análise do Processo de Compras de Itens Classe C Utilizando a Curva ABC", "Análise da Gestão da Cadeia de Suprimentos sob Teorias de Custos e Recursos"] },
 
-  { "id": "strategic-sourcing-definition", "intent": "definition", "query": "What is strategic sourcing?", "expected_titles": ["Strategic Sourcing Fundamentals"] },
-  { "id": "strategic-sourcing-principles", "intent": "definition", "query": "What are the core principles of strategic sourcing?", "expected_titles": ["Strategic Sourcing Fundamentals"] },
-  { "id": "strategic-sourcing-application", "intent": "application", "query": "How should we implement strategic sourcing in a manufacturing firm?", "expected_titles": ["Strategic Sourcing Fundamentals"] },
-  { "id": "strategic-sourcing-comparison", "intent": "comparison", "query": "How is strategic sourcing different from tactical purchasing?", "expected_titles": ["Strategic Sourcing Fundamentals"] },
-  { "id": "strategic-sourcing-edge", "intent": "edge", "query": "Does strategic sourcing apply to non-strategic spend categories?", "expected_titles": ["Strategic Sourcing Fundamentals"] },
+  { "id": "sourcing-demanda", "intent": "application", "query": "Como gerenciar a demanda de forma integrada na cadeia de suprimentos?", "expected_titles": ["Gestão da Demanda como Processo Integrado na Cadeia de Suprimentos"] },
+  { "id": "sourcing-reducao-custos", "intent": "application", "query": "Como a gestão estratégica das compras reduz custos da empresa?", "expected_titles": ["Gestão Estratégica das Compras para Redução de Custos em Empresas"] },
+  { "id": "sourcing-strategic-en", "intent": "definition", "query": "What is strategic sourcing and how does it reduce procurement cost?", "expected_titles": ["Gestão Estratégica das Compras para Redução de Custos em Empresas"] },
 
-  { "id": "porter-five-forces", "intent": "definition", "query": "Explique as cinco forças de Porter", "expected_titles": ["Porter's Five Forces"] },
-  { "id": "porter-application-pt", "intent": "application", "query": "Como usar as forças de Porter para avaliar um setor?", "expected_titles": ["Porter's Five Forces"] },
-  { "id": "porter-en-definition", "intent": "definition", "query": "What are Porter's five forces?", "expected_titles": ["Porter's Five Forces"] },
-  { "id": "porter-en-application", "intent": "application", "query": "How do I apply Porter's five forces to procurement strategy?", "expected_titles": ["Porter's Five Forces"] },
-  { "id": "porter-edge", "intent": "edge", "query": "As cinco forças de Porter ainda são relevantes na economia digital?", "expected_titles": ["Porter's Five Forces"] },
+  { "id": "srm-confianca", "intent": "definition", "query": "Qual o papel da confiança no relacionamento cliente-fornecedor?", "expected_titles": ["Confiança Interorganizacional nas Compras: Antecedentes e Estratégias de Cooperação"] },
+  { "id": "srm-socializacao", "intent": "application", "query": "Como mecanismos de socialização afetam o relacionamento com fornecedores?", "expected_titles": ["Impacto dos Mecanismos de Socialização no Relacionamento Cliente-Fornecedor"] },
+  { "id": "srm-aprendizagem", "intent": "application", "query": "Como aprendizagem organizacional impacta gestão de fornecedores na saúde?", "expected_titles": ["Aprendizagem Organizacional na Gestão de Suprimentos da Saúde em Holding Brasileira"] },
+  { "id": "srm-montadoras", "intent": "application", "query": "Como funciona a relação entre montadoras e fornecedores no setor automotivo?", "expected_titles": ["Novas Relações entre Montadoras e Fornecedores na Indústria Automobilística Brasileira"] },
+  { "id": "srm-cooperacao", "intent": "definition", "query": "Quais estratégias de cooperação interorganizacional em compras?", "expected_titles": ["Confiança Interorganizacional nas Compras: Antecedentes e Estratégias de Cooperação"] },
 
-  { "id": "sustentaveis-definition", "intent": "definition", "query": "O que são compras sustentáveis?", "expected_titles": ["Compras Sustentáveis"] },
-  { "id": "sustentaveis-iso26000", "intent": "definition", "query": "O que diz a ISO 26000 sobre responsabilidade social?", "expected_titles": ["Compras Sustentáveis"] },
-  { "id": "sustentaveis-iso20400", "intent": "comparison", "query": "Qual a diferença entre ISO 26000 e ISO 20400?", "expected_titles": ["Compras Sustentáveis"] },
-  { "id": "sustentaveis-rfp", "intent": "application", "query": "Como integrar critérios de sustentabilidade em um RFP?", "expected_titles": ["Compras Sustentáveis"] },
-  { "id": "sustentaveis-circular", "intent": "edge", "query": "O que são compras circulares?", "expected_titles": ["Compras Sustentáveis"] },
+  { "id": "publico-blockchain", "intent": "application", "query": "Como blockchain pode ser usado em compras governamentais?", "expected_titles": ["Otimização de Compras Governamentais Utilizando Tecnologia Blockchain"] },
+  { "id": "publico-saude", "intent": "application", "query": "Como inovar na gestão logística da saúde pública?", "expected_titles": ["Inovação na Gestão de Serviços Logísticos na Saúde Pública Brasileira"] },
+  { "id": "publico-modelo", "intent": "definition", "query": "Como funciona a gestão da cadeia de suprimentos no setor público brasileiro?", "expected_titles": ["Modelo de Gestão da Cadeia de Suprimento no Setor Público Brasileiro", "Integração da Gestão da Cadeia de Suprimentos nas Compras Públicas Brasileiras"] },
+  { "id": "publico-integracao", "intent": "application", "query": "Como integrar gestão da cadeia de suprimentos em compras públicas?", "expected_titles": ["Integração da Gestão da Cadeia de Suprimentos nas Compras Públicas Brasileiras"] },
+
+  { "id": "sustent-ambientais", "intent": "application", "query": "Como danos ambientais de fornecedores afetam compras verdes?", "expected_titles": ["Impact de Danos Ambientais de Fornecedores nas Capacidades de Compras Verdes"] },
+  { "id": "sustent-restricoes", "intent": "application", "query": "Como integrar teoria das restrições com cadeia de suprimentos verde?", "expected_titles": ["Integração da Teoria das Restrições e Gestão da Cadeia de Suprimentos Verde"] },
+  { "id": "sustent-en", "intent": "definition", "query": "What is green procurement and how does it relate to sustainability?", "expected_titles": ["Impact de Danos Ambientais de Fornecedores nas Capacidades de Compras Verdes", "Integração da Teoria das Restrições e Gestão da Cadeia de Suprimentos Verde"] },
+
+  { "id": "risco-covid", "intent": "application", "query": "Como a Covid-19 impactou a resiliência de cadeias de suprimentos?", "expected_titles": ["Resiliência nas Cadeias de Suprimentos Durante a Pandemia de Covid-19: Desafios e Oportunidades"] },
+  { "id": "risco-efeito-chicote", "intent": "application", "query": "Como reduzir o efeito chicote na cadeia de suprimentos com compartilhamento de dados?", "expected_titles": ["Compartilhamento de dados como estratégia para reduzir o efeito chicote na cadeia de suprimentos"] },
+  { "id": "risco-resiliencia-en", "intent": "definition", "query": "How can supply chains build resilience to disruptions?", "expected_titles": ["Resiliência nas Cadeias de Suprimentos Durante a Pandemia de Covid-19: Desafios e Oportunidades"] },
+
+  { "id": "tco-inflacao", "intent": "application", "query": "Como otimizar compras e estoques em tempos de inflação?", "expected_titles": ["Modelo de decisão para otimização de compras e estoques em tempos de inflação"] },
+  { "id": "tco-papel-algoritmos", "intent": "application", "query": "Como otimizar custos na cadeia de suprimentos de papel com algoritmos evolucionários?", "expected_titles": ["Otimização de Custos na Cadeia de Suprimentos de Papel com Algoritmos Evolucionários"] },
+
+  { "id": "kpi-scor", "intent": "definition", "query": "O que é o modelo SCOR para avaliar desempenho em cadeias de suprimentos?", "expected_titles": ["Avaliação do Desempenho em Cadeias de Suprimentos na Manufatura Utilizando o Modelo SCOR"] },
+  { "id": "kpi-software-financeiro", "intent": "application", "query": "Como monitorar indicadores de performance em software para o setor financeiro?", "expected_titles": ["Desenvolvimento e Monitoramento de Indicadores de Performance em Software para o Setor Financeiro"] },
+
+  { "id": "digital-eprocurement", "intent": "definition", "query": "O que é e-procurement e quais são seus fatores críticos de sucesso?", "expected_titles": ["E-Procurement: Modelos e Fatores Críticos para o Sucesso nas Compras Corporativas"] },
 
   { "id": "smalltalk-pt", "intent": "smalltalk", "query": "oi, tudo bem?", "expected_titles": [] },
   { "id": "smalltalk-en", "intent": "smalltalk", "query": "hi, how's it going?", "expected_titles": [] },
 
-  { "id": "porter-vs-kraljic", "intent": "comparison", "query": "Qual a diferença entre Porter e Kraljic em compras estratégicas?", "expected_titles": ["A Matriz de Kraljic", "Porter's Five Forces"] },
-  { "id": "sustentaveis-vs-strategic", "intent": "comparison", "query": "How does sustainable procurement relate to strategic sourcing?", "expected_titles": ["Compras Sustentáveis", "Strategic Sourcing Fundamentals"] },
-  { "id": "kraljic-vs-sustentaveis", "intent": "comparison", "query": "Como a matriz de Kraljic se conecta com compras sustentáveis?", "expected_titles": ["A Matriz de Kraljic", "Compras Sustentáveis"] },
-
-  { "id": "structured-kraljic-table", "intent": "structured-content", "query": "Como é estruturada a tabela da matriz de Kraljic?", "expected_titles": ["A Matriz de Kraljic"] },
-  { "id": "structured-kraljic-axes", "intent": "structured-content", "query": "Quais são os eixos de risco e valor na matriz de Kraljic?", "expected_titles": ["A Matriz de Kraljic"] },
-  { "id": "structured-s2p-flow", "intent": "structured-content", "query": "Qual é o fluxo do processo de strategic sourcing?", "expected_titles": ["Strategic Sourcing Fundamentals"] },
-  { "id": "structured-porter-diagram", "intent": "structured-content", "query": "Quais elementos compõem o diagrama das cinco forças de Porter?", "expected_titles": ["Porter's Five Forces"] },
-  { "id": "structured-iso-frameworks", "intent": "structured-content", "query": "Quais frameworks ISO orientam compras sustentáveis?", "expected_titles": ["Compras Sustentáveis"] }
+  { "id": "compare-srm-sourcing", "intent": "comparison", "query": "Qual a diferença entre gestão de fornecedores e sourcing estratégico?", "expected_titles": ["Confiança Interorganizacional nas Compras: Antecedentes e Estratégias de Cooperação", "Gestão Estratégica das Compras para Redução de Custos em Empresas"] },
+  { "id": "compare-publico-privado", "intent": "comparison", "query": "Como compras públicas diferem de compras corporativas privadas?", "expected_titles": ["Modelo de Gestão da Cadeia de Suprimento no Setor Público Brasileiro", "Gestão Estratégica das Compras para Redução de Custos em Empresas"] }
 ]
