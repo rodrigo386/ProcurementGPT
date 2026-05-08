@@ -53,3 +53,27 @@ export async function GET() {
 
   return NextResponse.json({ jobs });
 }
+
+export async function DELETE() {
+  let userId: string;
+  try {
+    const { user } = await requireAdmin();
+    userId = user.id;
+  } catch (err) {
+    if (err instanceof NotAdmin) return new NextResponse('Not Found', { status: 404 });
+    throw err;
+  }
+
+  const sb = getServerSupabase();
+
+  const { data, error } = await sb
+    .from('ingestion_jobs')
+    .delete()
+    .in('status', ['done', 'error'])
+    .eq('user_id', userId)
+    .select('id');
+
+  if (error) return NextResponse.json({ error: 'delete_failed' }, { status: 500 });
+
+  return NextResponse.json({ ok: true, deleted: (data ?? []).length });
+}

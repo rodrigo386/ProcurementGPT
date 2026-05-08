@@ -20,6 +20,87 @@ function mockAuth(role: 'admin' | 'user') {
   });
 }
 
+describe('DELETE /api/admin/ingest/jobs', () => {
+  it('non-admin → 404', async () => {
+    mockAuth('user');
+    const { DELETE } = await import('@/app/api/admin/ingest/jobs/route');
+    const res = await DELETE();
+    expect(res.status).toBe(404);
+  });
+
+  it('admin → deletes done+error jobs scoped to user, returns count', async () => {
+    mockAuth('admin');
+    const calls: Array<{ kind: string; payload?: unknown }> = [];
+
+    vi.doMock('@/lib/db/supabase', () => ({
+      getServerSupabase: () => ({
+        from: () => {
+          const builder: Record<string, unknown> = {};
+          builder.delete = vi.fn().mockImplementation(() => {
+            calls.push({ kind: 'delete' });
+            return builder;
+          });
+          builder.in = vi.fn().mockImplementation((col: string, vals: unknown[]) => {
+            calls.push({ kind: 'in', payload: { col, vals } });
+            return builder;
+          });
+          builder.eq = vi.fn().mockImplementation((col: string, val: unknown) => {
+            calls.push({ kind: 'eq', payload: { col, val } });
+            return builder;
+          });
+          builder.select = vi.fn().mockResolvedValue({
+            data: [{ id: 'j1' }, { id: 'j2' }],
+            error: null,
+          });
+          return builder;
+        },
+      }),
+    }));
+
+    const { DELETE } = await import('@/app/api/admin/ingest/jobs/route');
+    const res = await DELETE();
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean; deleted: number };
+    expect(body.ok).toBe(true);
+    expect(body.deleted).toBe(2);
+
+    // Verify the delete was scoped to done+error statuses
+    expect(calls.some((c) => c.kind === 'in' && JSON.stringify((c.payload as { vals: unknown[] }).vals) === JSON.stringify(['done', 'error']))).toBe(true);
+    // Verify scoped to user_id
+    expect(calls.some((c) => c.kind === 'eq' && (c.payload as { col: string }).col === 'user_id')).toBe(true);
+  });
+
+  it('admin → does not delete queued/running jobs', async () => {
+    mockAuth('admin');
+    const inCalls: Array<string[]> = [];
+
+    vi.doMock('@/lib/db/supabase', () => ({
+      getServerSupabase: () => ({
+        from: () => {
+          const builder: Record<string, unknown> = {};
+          builder.delete = vi.fn().mockReturnValue(builder);
+          builder.in = vi.fn().mockImplementation((_col: string, vals: string[]) => {
+            inCalls.push(vals);
+            return builder;
+          });
+          builder.eq = vi.fn().mockReturnValue(builder);
+          builder.select = vi.fn().mockResolvedValue({ data: [], error: null });
+          return builder;
+        },
+      }),
+    }));
+
+    const { DELETE } = await import('@/app/api/admin/ingest/jobs/route');
+    await DELETE();
+
+    // The statuses passed to .in() must NOT include 'queued' or 'running'
+    for (const vals of inCalls) {
+      expect(vals).not.toContain('queued');
+      expect(vals).not.toContain('running');
+    }
+  });
+});
+
 describe('GET /api/admin/ingest/jobs', () => {
   it('admin → returns jobs array, runs cleanup pass (delete done > 7d, mark stale running as error)', async () => {
     mockAuth('admin');

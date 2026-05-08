@@ -58,6 +58,11 @@ export function IngestRoot() {
     [fetchJobs],
   );
 
+  const onClearRecents = useCallback(async () => {
+    await fetch('/api/admin/ingest/jobs', { method: 'DELETE' });
+    await fetchJobs();
+  }, [fetchJobs]);
+
   const liveJobs = jobs.filter((j) => j.status === 'running' || j.status === 'queued');
   const recentJobs = jobs.filter((j) => j.status === 'done' || j.status === 'error').slice(0, 10);
 
@@ -82,7 +87,7 @@ export function IngestRoot() {
       </div>
       <Dropzone onJobsCreated={() => fetchJobs()} />
       <JobsLive jobs={liveJobs} onRetry={onRetry} />
-      <JobsRecent jobs={recentJobs} onRetry={onRetry} />
+      <JobsRecent jobs={recentJobs} onRetry={onRetry} onClearRecents={onClearRecents} />
     </div>
   );
 }
