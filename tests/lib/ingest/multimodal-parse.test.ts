@@ -53,18 +53,50 @@ describe('validateBlocks', () => {
     expect(() => validateBlocks({ blocks: [{ type: 'bogus', page: 1 }] })).toThrow();
   });
 
-  it('rejects figure without figureKind', () => {
-    expect(() =>
-      validateBlocks({
-        blocks: [{ type: 'figure', page: 1, description: 'a long enough description here' }],
-      }),
-    ).toThrow();
+  it('defaults figureKind to "diagram" when Gemini omits it', () => {
+    const out = validateBlocks({
+      blocks: [{ type: 'figure', page: 1, description: 'a long enough description here' }],
+    });
+    expect(out).toHaveLength(1);
+    const fig = out[0] as Extract<typeof out[number], { type: 'figure' }>;
+    expect(fig.figureKind).toBe('diagram');
   });
 
-  it('rejects text with empty content', () => {
+  it('drops figure with no description AND no caption (no usable content)', () => {
+    expect(() =>
+      validateBlocks({
+        blocks: [{ type: 'figure', page: 1, figureKind: 'flow' }],
+      }),
+    ).toThrow(/no usable blocks/);
+  });
+
+  it('uses caption as description when description is missing on figure', () => {
+    const out = validateBlocks({
+      blocks: [
+        { type: 'figure', page: 2, caption: 'Figura 4: Fluxograma S2P', figureKind: 'flow' },
+      ],
+    });
+    expect(out).toHaveLength(1);
+    const fig = out[0] as Extract<typeof out[number], { type: 'figure' }>;
+    expect(fig.description).toBe('Figura 4: Fluxograma S2P');
+    expect(fig.caption).toBe('Figura 4: Fluxograma S2P');
+  });
+
+  it('drops empty-content text blocks while keeping good ones', () => {
+    const out = validateBlocks({
+      blocks: [
+        { type: 'text', page: 1, content: '' },
+        { type: 'text', page: 2, content: 'real content' },
+      ],
+    });
+    expect(out).toHaveLength(1);
+    expect((out[0] as Extract<typeof out[number], { type: 'text' }>).content).toBe('real content');
+  });
+
+  it('throws when ALL blocks are empty after repair', () => {
     expect(() =>
       validateBlocks({ blocks: [{ type: 'text', page: 1, content: '' }] }),
-    ).toThrow();
+    ).toThrow(/no usable blocks/);
   });
 });
 

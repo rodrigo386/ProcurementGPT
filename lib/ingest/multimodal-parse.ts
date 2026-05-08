@@ -29,29 +29,37 @@ Regras:
 
 export const MULTIMODAL_RETRY_SUFFIX = `\n\nSua resposta anterior não bateu com o schema. Retorne EXATAMENTE este shape JSON: { "blocks": [ ... ] } onde cada bloco tem "type" igual a "text" | "table" | "figure" e os campos obrigatórios descritos acima.`;
 
-const TextBlock = z.object({
+// Lenient input shapes — Gemini's `responseSchema` JSON-Schema subset only
+// supports a flat `required` array, so we cannot make per-type fields strictly
+// required at the API layer. Accept loose shapes here and filter / repair after
+// parsing. See validateBlocks() for the type-narrowing pipeline.
+const RawTextBlock = z.object({
   type: z.literal('text'),
   page: z.number().int().min(1),
-  content: z.string().min(1),
+  content: z.string().optional(),
 });
-const TableBlock = z.object({
+const RawTableBlock = z.object({
   type: z.literal('table'),
   page: z.number().int().min(1),
-  markdown: z.string().min(1),
+  markdown: z.string().optional(),
   caption: z.string().optional(),
 });
-const FigureBlock = z.object({
+const RawFigureBlock = z.object({
   type: z.literal('figure'),
   page: z.number().int().min(1),
-  description: z.string().min(20),
+  description: z.string().optional(),
   caption: z.string().optional(),
-  figureKind: z.enum(['flow', 'chart', 'diagram']),
+  figureKind: z.enum(['flow', 'chart', 'diagram']).optional(),
 });
 
-const BlockSchema = z.discriminatedUnion('type', [TextBlock, TableBlock, FigureBlock]);
+const RawBlockSchema = z.discriminatedUnion('type', [
+  RawTextBlock,
+  RawTableBlock,
+  RawFigureBlock,
+]);
 
 export const MultimodalOutputSchema = z.object({
-  blocks: z.array(BlockSchema).min(1),
+  blocks: z.array(RawBlockSchema).min(1),
 });
 
 /** JSON-Schema shape passed to Gemini's `responseSchema` config. */
@@ -79,8 +87,57 @@ export const MULTIMODAL_RESPONSE_SCHEMA = {
   required: ['blocks'],
 } as const;
 
+/**
+ * Validate the raw Gemini response and narrow each block to a usable Block.
+ *
+ * Gemini may legitimately omit per-type fields (e.g. a 'figure' with no
+ * description, or a 'table' that came back with the cells in `content`
+ * instead of `markdown`). Rather than throw — which would force a retry
+ * and ultimately the text-only fallback — we repair what we can and drop
+ * blocks that have no usable content.
+ *
+ * Throws when the result would be empty (caller treats as failure and
+ * falls back to text-only).
+ */
 export function validateBlocks(raw: unknown): Block[] {
-  return MultimodalOutputSchema.parse(raw).blocks;
+  const parsed = MultimodalOutputSchema.parse(raw);
+  const out: Block[] = [];
+  for (const b of parsed.blocks) {
+    if (b.type === 'text') {
+      const content = b.content?.trim();
+      if (content) out.push({ type: 'text', page: b.page, content });
+      continue;
+    }
+    if (b.type === 'table') {
+      const markdown = b.markdown?.trim();
+      if (markdown) {
+        out.push({
+          type: 'table',
+          page: b.page,
+          markdown,
+          ...(b.caption ? { caption: b.caption } : {}),
+        });
+      }
+      continue;
+    }
+    // figure
+    const description = b.description?.trim();
+    const caption = b.caption?.trim();
+    const figureKind = b.figureKind ?? 'diagram';
+    // Drop figures with no description AND no caption — nothing to embed.
+    if (!description && !caption) continue;
+    out.push({
+      type: 'figure',
+      page: b.page,
+      description: description || (caption as string),
+      ...(caption ? { caption } : {}),
+      figureKind,
+    });
+  }
+  if (out.length === 0) {
+    throw new Error('multimodal parse produced no usable blocks after repair');
+  }
+  return out;
 }
 
 const INLINE_LIMIT_BYTES = 20 * 1024 * 1024; // 20 MB
