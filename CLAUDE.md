@@ -44,6 +44,7 @@ removida em 2026-05-02). Audiência: gestores de compras brasileiros (PT-BR prim
 | 10 | `admin-chunks-visibility-complete` | `/admin/articles` detail pane lista TODOS os chunks por artigo (sem `limit(20)`) e mostra "N chunks · ≈X% absorvido" no header. % = `sum(chunk.content.length) / source_chars`; pode exceder 100% por causa do overlap de 400 chars (prefix `≈` deixa explícito). Migration 0009 adiciona `articles.source_chars int NOT NULL` com backfill inline (`length(raw_md)`). Pipeline grava `source_chars: parsed.text.length` no insert do artigo. Chunks renderizam como `<details>` HTML nativo (sem dep nova; expand/collapse com a11y de browser). |
 | 11 | `followup-questions-complete` | `/api/chat` estende `onFinish` com `suggestFollowups` (Gemini Flash Lite, JSON via zod, abort 3s, fail-soft → `[]`). Dois modos por `chunks.length`: **deepen** (system prompt PT/EN ancorado em títulos + snippets de 240 chars) e **redirect** (PT/EN — sugere reformulações para tópicos conhecidos de procurement; sem material no prompt). Span `suggest-followups` aninhado em `chat.turn` (`level:WARNING` em erro). Tag de trace `followups:empty` quando array sai vazio. Annotation `{ followups: string[] }` no SSE; `MessageList` lê via `pickFollowups`. `<FollowupChips/>` (button row, a11y, theme-aware) renderiza só na **última** mensagem do assistant da sessão (não persistido em `sessions.messages`). Click invoca `useChat.append({ role:'user', content })`, virando turno normal (rate-limit per-user já cobre). Skip do passo se `finishReason !== 'stop'` ou `text.length < 20`. `RagResult` agora expõe `chunks: RetrievedChunk[]` (refactor aditivo). |
 | 12 | `multimodal-ingestion-complete` | Ingestão PDF agora via Gemini multimodal nativo (1 chamada por artigo, ~$0.02). `lib/ingest/multimodal-parse.ts` com zod schema + retry 1x + AbortController 120s; >20MB usa Files API (`ai.files.upload`). `lib/ingest/parse-source.ts` orquestra dispatch (PDF→multimodal-com-fallback, DOCX→tables-aware, TXT→trivial). Chunker ganha `chunkBlocks` que emite 1 chunk por table/figure (sem split mesmo >3200) e agrupa text contíguo. `chunks.metadata` ganha `kind`/`page`/`caption`/`figureKind` (sem migration — JSONB). `articles.metadata.parser` registra `multimodal`/`text-only-fallback`/`docx-tables`/`text-only`. `/admin/articles` mostra badge colorido por kind + número de página. Eval +5 pares (tabelas Kraljic, fluxos S2P/stakeholders, gráfico spend); CI gate `recall@5 ≥ 0.85` mantido sobre 30 pares (verificação após backfill manual dos 4 artigos atuais). |
+| 13 | `auto-classified-library-complete` | Pipeline chama `classifyContent` (gpt-4o-mini, fail-soft, abort 15s) após dedup-check pra produzir `{ title, theme, summary }` baseados no conteúdo. Migration 0010 adiciona `articles.theme` (CHECK constraint nos 11 valores) + `articles.summary`. `lib/ingest/taxonomy.ts` é a fonte única da verdade pra os temas. `/admin/articles` ganha sidebar de temas (180px) com contagem; detail pane ganha edição inline de título (✎) + dropdown de tema; PATCH `/api/admin/articles/[id]` valida com zod. Script `npm run articles:reclassify` re-classifica todos os artigos via `articles.raw_md` (sem re-upload). Backfill de 21 artigos rodou com 0 fallbacks; distribuição 9/11 temas. `golden.json` realinhado com novos títulos canônicos pós-backfill (recall@5=0.97, 28/29 hits). |
 
 **Milestone 1 closed.**
 
@@ -120,8 +121,10 @@ Roadmap completo em `docs/product/beta-readiness.md`. Roadmap B2B (Milestone 3+)
     html-table.ts                       (htmlTableToMarkdown utility)
     parse-source.ts                     (parseSource dispatcher: PDF→multimodal-with-fallback, DOCX→tables-aware, TXT→trivial)
     chunker.ts                          (chunkText + chunkBlocks; paragraph-aware splitter shared internally)
-    metadata.ts                         (title/author/language/date heurísticas)
-    pipeline.ts                         (runPipeline orquestrador end-to-end; dispatcha por parsed.kind)
+    metadata.ts                         (author/language/date heurísticas; title campo ignorado pós-sub-projeto 13)
+    taxonomy.ts                         (TAXONOMY 11 temas + Theme type + isValidTheme + THEME_DESCRIPTIONS)
+    classify-content.ts                 (classifyContent: gpt-4o-mini, response_format json_object, zod, fail-soft, abort 15s)
+    pipeline.ts                         (runPipeline: dedup → classify → insert, ordering reorder em sub-projeto 13)
 /middleware.ts                          (gates /chat + /admin via Supabase session check)
 /components
   /chat (ChatRoot, ChatSession, Sidebar, Header, EmptyState, MessageList, Message, Composer)
@@ -254,6 +257,12 @@ APP_ENV=local                  # sub-projeto 8 — drives env:<value> tag in Lan
 - Esquecer `OPENAI_API_KEY` no Railway env quando deployar — todo o `/api/chat` quebra (sem fallback).
 - Esquecer `OPENAI_API_KEY` nos GitHub Actions secrets — CI vai falhar no `RAG eval`.
 - Atualizar `@ai-sdk/openai` pra `^2.x` ou `^3.x` sem subir `ai` pra `^5.x` — a major contém troca do contrato `LanguageModelV1` → `LanguageModelV3` e quebra typecheck no `streamText`. Se for atualizar, faça os dois juntos.
+- Adicionar tema na taxonomia editando só `lib/ingest/taxonomy.ts` — a CHECK constraint no DB também precisa ser atualizada via migration. Os dois lugares precisam estar em sync, senão `update articles set theme=...` quebra com check_violation.
+- Chamar `classifyContent` ANTES do dedup check no `pipeline.ts` — o ordering correto é dedup → classify → insert (sub-projeto 13 deliberadamente reordenou pra economizar OpenAI em re-uploads do mesmo PDF).
+- Confiar no `extractMetadata.title` em código novo — sub-projeto 13 ignora esse campo (`articles.title` agora vem do `classifyContent`). `extractMetadata` segue válido pra `author`/`language`/`date`.
+- Persistir tema em `chunks.metadata` — o tema é puramente administrativo (organização da biblioteca), NÃO é usado pelo retrieval. Adicionar no chunk seria duplicação inútil.
+- Editar `golden.json` `expected_titles` sem rodar `npm run articles:reclassify` antes — você não sabe quais títulos canônicos o LLM produziu até rodar o backfill.
+- Usar `articles.title` como ID estável em qualquer integração externa — o admin pode editar via PATCH a qualquer momento. Use `articles.id` (UUID).
 
 ## Fluxo de chat end-to-end (sub-projetos 1-7)
 ```

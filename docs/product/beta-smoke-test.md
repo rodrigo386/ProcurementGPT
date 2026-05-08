@@ -74,3 +74,11 @@ Run this checklist before sending a beta invite. Updated 2026-05-04.
 - [ ] DOCX com tabela: `/admin/articles` mostra chunk `table`; markdown bem-formado com header divider.
 
 If any item fails, file an issue and fix before sending invites.
+
+### Sub-projeto 13 — Auto-classified Library
+
+- [ ] Re-uploadar 1 PDF qualquer: `/admin/articles` mostra título coerente com o conteúdo (não header de journal) e tema correto na coluna esquerda (sidebar atualiza contagem).
+- [ ] Sidebar `/admin/articles`: clicar num tema com 0 artigos → tabela vazia (mensagem "Nenhum artigo neste tema" ou simplesmente vazio).
+- [ ] Editar título via lápis no detail pane: persiste após F5 e o card na lista atualiza.
+- [ ] Editar tema via dropdown: artigo "muda de pasta" — sidebar contagens recalculam imediatamente sem refetch.
+- [ ] Tentar setar tema fora da taxonomia (dev tools, fetch direto): API retorna 400.
