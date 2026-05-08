@@ -45,6 +45,8 @@ const article = {
   metadata: { content_hash: '3a7fb29c1234' },
   ingested_at: '2026-05-01T10:00:00Z',
   source_chars: 7600,
+  theme: 'Estratégia de Compras',
+  summary: null,
 };
 
 describe('<ArticleDetail/>', () => {

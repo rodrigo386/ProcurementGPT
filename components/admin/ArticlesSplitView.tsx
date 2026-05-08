@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { supabaseBrowser } from '@/lib/db/supabase-browser';
 import { ArticleDetail, type AdminArticle } from '@/components/admin/ArticleDetail';
 import { ConfirmDelete } from '@/components/admin/ConfirmDelete';
+import { ThemeSidebar, type ThemeFilter } from '@/components/admin/ThemeSidebar';
 
 type ArticleRow = AdminArticle & { chunks_count?: number };
 
@@ -15,6 +16,7 @@ export function ArticlesSplitView() {
   const [rows, setRows] = useState<ArticleRow[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [themeFilter, setThemeFilter] = useState<ThemeFilter>('all');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [confirmBulkOpen, setConfirmBulkOpen] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
@@ -24,7 +26,7 @@ export function ArticlesSplitView() {
     (async () => {
       const { data } = await supabaseBrowser()
         .from('articles')
-        .select('id, title, author, language, published_at, ingested_at, metadata, source_chars')
+        .select('id, title, author, language, published_at, ingested_at, metadata, source_chars, theme, summary')
         .order('ingested_at', { ascending: false })
         .limit(100);
       if (cancelled) return;
@@ -36,14 +38,15 @@ export function ArticlesSplitView() {
   }, []);
 
   const filtered = useMemo(() => {
-    if (!search.trim()) return rows;
-    const q = search.toLowerCase();
-    return rows.filter(
-      (r) =>
-        r.title.toLowerCase().includes(q) ||
-        (r.author ?? '').toLowerCase().includes(q),
-    );
-  }, [rows, search]);
+    let out = themeFilter === 'all' ? rows : rows.filter((r) => r.theme === themeFilter);
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      out = out.filter(
+        (r) => r.title.toLowerCase().includes(q) || (r.author ?? '').toLowerCase().includes(q),
+      );
+    }
+    return out;
+  }, [rows, search, themeFilter]);
 
   const detailArticle = rows.find((r) => r.id === selectedId) ?? null;
 
@@ -142,8 +145,11 @@ export function ArticlesSplitView() {
         onConfirm={handleBulkDelete}
       />
 
-      <div className="grid grid-cols-[1.4fr_1fr] gap-0 rounded-md border border-border overflow-hidden bg-card min-h-[420px]">
-        <div className="border-r border-border max-h-[600px] overflow-y-auto">
+      <div className="grid grid-cols-[180px_1.4fr_1fr] gap-0 rounded-md border border-border overflow-hidden bg-card min-h-[420px]">
+        <div className="max-h-[600px] overflow-y-auto">
+          <ThemeSidebar articles={rows} selected={themeFilter} onSelect={setThemeFilter} />
+        </div>
+        <div className="border-r border-l border-border max-h-[600px] overflow-y-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -210,6 +216,9 @@ export function ArticlesSplitView() {
                 next.delete(id);
                 return next;
               });
+            }}
+            onUpdated={(id, patch) => {
+              setRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
             }}
           />
         </div>

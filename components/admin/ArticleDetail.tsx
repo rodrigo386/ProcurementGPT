@@ -14,6 +14,8 @@ export type AdminArticle = {
   metadata: Record<string, unknown>;
   ingested_at: string;
   source_chars: number;
+  theme: string;
+  summary: string | null;
 };
 
 type ChunkKind = 'text' | 'table' | 'figure';
@@ -35,9 +37,10 @@ type Chunk = {
 type Props = {
   article: AdminArticle | null;
   onDeleted: (id: string) => void;
+  onUpdated?: (id: string, patch: { title?: string; theme?: string }) => void;
 };
 
-export function ArticleDetail({ article, onDeleted }: Props) {
+export function ArticleDetail({ article, onDeleted, onUpdated }: Props) {
   const [chunks, setChunks] = useState<Chunk[]>([]);
   const [loading, setLoading] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
