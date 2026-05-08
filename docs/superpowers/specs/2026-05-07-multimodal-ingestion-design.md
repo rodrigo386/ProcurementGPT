@@ -323,7 +323,7 @@ Sem migration nova. `chunks.metadata` é JSONB; `kind`/`page`/`caption`/`figureK
 1. `lib/ingest/multimodal-parse.ts`, `lib/ingest/docx-parse.ts`, `lib/ingest/html-table.ts`, `lib/ingest/parse-source.ts` implementados e cobertos pelos vitest novos.
 2. `lib/ingest/chunker.ts` exporta `chunkBlocks` em paridade comportamental com `chunkText` para text contíguo.
 3. `lib/ingest/pipeline.ts` usa `parseSource` + dispatch text-vs-blocks; fallback testado.
-4. Os 4 artigos atuais re-ingeridos via `/admin/ingest` (re-upload manual com flag `keep_source=true` setada na row); cada artigo tem ≥1 chunk não-text se o PDF original tiver tabelas/figuras.
+4. Os 4 artigos atuais re-ingeridos via `/admin/ingest` (delete prévio em `/admin/articles`, depois re-upload do PDF original); cada artigo tem ≥1 chunk não-text se o PDF original tiver tabelas/figuras.
 5. Golden set ganha 5 pares novos (queries de tabela/fluxo/gráfico). `npm run rag:eval` passa com `recall@5 ≥ 0.85` no set expandido.
 6. `/admin/articles` mostra badges `text`/`table`/`figure` + número de página.
 7. Smoke manual em `docs/product/beta-smoke-test.md` passa nos 5 itens.
@@ -342,7 +342,7 @@ Sem migration nova. `chunks.metadata` é JSONB; `kind`/`page`/`caption`/`figureK
 | Reprocessar 4 artigos descarta histórico de chunks (sources antigas em conversas viram dangling) | baixa | A relação é via `chunks.id`/`articles.id`. Conversas guardam só o array `sources` no JSONB do turno (com snapshot do título/snippet). Apagar/recriar chunks não quebra UI. Eval golden refs precisam ser atualizadas — combina com item 5 do critério de saída. |
 | Mammoth html-to-md emite tabela mal-formada em DOCX exótico | baixa | Eval cobre PDF principalmente; DOCX é nicho. Falha do html-to-md cai em try/catch → reverte ao texto cru via `extractRawText` (fallback dentro do path DOCX). |
 | Retry duplica custo Gemini quando JSON falha | baixa | Retry só dispara em zod fail (raro com structured output). Hard cap 1 retry. |
-| Persistir blob fonte (`keep_source=true`) cresce Storage | baixa | Default segue deletando. Flag é opt-in por job. Storage cleanup manual cabe em sub-projeto separado se virar dor. |
+| Admin perdeu o PDF original e precisa reprocessar | baixa | Storage limpa o blob após sucesso (comportamento atual). Para o backfill dos 4 artigos atuais, o admin precisa ter o PDF localmente. Se virar dor, sub-projeto futuro adiciona migration + flag `keep_source` em `ingestion_jobs`. |
 
 ## Fora de escopo (futuro)
 
