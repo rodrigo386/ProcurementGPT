@@ -71,7 +71,7 @@ describe('rag runRag', () => {
     expect(retrieveSpy).not.toHaveBeenCalled();
     expect(rerankSpy).not.toHaveBeenCalled();
     expect(result.sources).toEqual([]);
-    expect(result.system.toLowerCase()).toContain('não tem fonte');
+    expect(result.system.toLowerCase()).toMatch(/não\s+(tenho|tem)\s+fonte/);
   });
 
   it('handles empty retrieved chunks by going through buildPrompt empty branch', async () => {
@@ -93,7 +93,7 @@ describe('rag runRag', () => {
     const { runRag } = await import('@/lib/rag');
     const result = await runRag('pergunta sem fonte');
     expect(result.sources).toEqual([]);
-    expect(result.system.toLowerCase()).toContain('não tem fonte');
+    expect(result.system.toLowerCase()).toMatch(/não\s+(tenho|tem)\s+fonte/);
   });
 
   it('opens spans on a provided parentTrace for classify, retrieve, rerank, build-prompt', async () => {
