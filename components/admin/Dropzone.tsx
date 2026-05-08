@@ -10,7 +10,8 @@ const ALLOWED = new Set([
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'text/plain',
 ]);
-const MAX_BYTES = 10 * 1024 * 1024;
+const MAX_MB = 100;
+const MAX_BYTES = MAX_MB * 1024 * 1024;
 
 async function uploadOne(file: File): Promise<string | null> {
   const fd = new FormData();
@@ -38,7 +39,7 @@ export function Dropzone({ onJobsCreated }: Props) {
         continue;
       }
       if (f.size > MAX_BYTES) {
-        errs.push(`${f.name}: maior que 10 MB`);
+        errs.push(`${f.name}: maior que ${MAX_MB} MB`);
         continue;
       }
       valid.push(f);
@@ -74,7 +75,7 @@ export function Dropzone({ onJobsCreated }: Props) {
       >
         <Upload className="h-7 w-7 text-muted-foreground" />
         <div className="text-sm font-medium">Arraste arquivos aqui ou clique para selecionar</div>
-        <div className="text-xs text-muted-foreground">PDF, DOCX, TXT — máx 10 MB por arquivo</div>
+        <div className="text-xs text-muted-foreground">PDF, DOCX, TXT — máx {MAX_MB} MB por arquivo</div>
         <input
           ref={inputRef}
           type="file"

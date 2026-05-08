@@ -30,14 +30,14 @@ describe('Dropzone', () => {
     expect(onJobsCreated).toHaveBeenCalled();
   });
 
-  it('rejects oversize files (>10 MB) with no upload', async () => {
+  it('rejects oversize files (>100 MB) with no upload', async () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal('fetch', fetchSpy);
     const { Dropzone } = await import('@/components/admin/Dropzone');
     render(<Dropzone onJobsCreated={() => {}} />);
-    const big = makeFile('big.pdf', 'application/pdf', 12 * 1024 * 1024);
+    const big = makeFile('big.pdf', 'application/pdf', 101 * 1024 * 1024);
     fireEvent.drop(screen.getByTestId('dropzone'), { dataTransfer: { files: [big] } });
-    await waitFor(() => expect(screen.getByText(/maior que 10 MB|too large/i)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/maior que 100 MB|too large/i)).toBeTruthy());
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
