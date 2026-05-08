@@ -20,7 +20,7 @@ type JobRow = {
   error_message: string | null;
 };
 
-function setupMocks(opts: {
+async function setupMocks(opts: {
   job: JobRow;
   parsed?:
     | { kind: 'text'; text: string; pageCount?: number }
@@ -28,6 +28,9 @@ function setupMocks(opts: {
   parser?: 'multimodal' | 'text-only-fallback' | 'docx-tables' | 'text-only';
   parseShouldThrow?: boolean;
   existingArticleId?: string | null;
+  classifyTitle?: string;
+  classifyTheme?: string;
+  classifySummary?: string;
 }) {
   const updateCalls: Array<Record<string, unknown>> = [];
   const insertedArticles: Array<Record<string, unknown>> = [];
@@ -53,6 +56,14 @@ function setupMocks(opts: {
     embed: vi.fn().mockImplementation(async (texts: string[]) =>
       texts.map(() => Array(1024).fill(0)),
     ),
+  }));
+
+  vi.doMock('@/lib/ingest/classify-content', () => ({
+    classifyContent: vi.fn().mockImplementation(async () => ({
+      title: opts.classifyTitle ?? 'A meaningful title from LLM',
+      theme: opts.classifyTheme ?? 'Outros',
+      summary: opts.classifySummary ?? 'one-line summary',
+    })),
   }));
 
   vi.doMock('@/lib/db/supabase', () => ({
@@ -93,7 +104,13 @@ function setupMocks(opts: {
     }),
   }));
 
-  return { updateCalls, insertedArticles, insertedChunkBatches };
+  const classifyContentMod = await import('@/lib/ingest/classify-content');
+  return {
+    updateCalls,
+    insertedArticles,
+    insertedChunkBatches,
+    classifyContent: classifyContentMod.classifyContent as ReturnType<typeof vi.fn>,
+  };
 }
 
 const baseJob: JobRow = {
@@ -113,7 +130,7 @@ const baseJob: JobRow = {
 
 describe('lib/ingest/pipeline', () => {
   it('happy path text fallback: writes article, embeds chunks, marks done', async () => {
-    const m = setupMocks({ job: baseJob, parser: 'text-only-fallback' });
+    const m = await setupMocks({ job: baseJob, parser: 'text-only-fallback' });
     const { runPipeline } = await import('@/lib/ingest/pipeline');
     await runPipeline('job-1');
     expect(m.insertedArticles).toHaveLength(1);
@@ -134,7 +151,7 @@ describe('lib/ingest/pipeline', () => {
         figureKind: 'flow',
       },
     ];
-    const m = setupMocks({
+    const m = await setupMocks({
       job: baseJob,
       parsed: { kind: 'blocks', blocks },
       parser: 'multimodal',
@@ -158,7 +175,7 @@ describe('lib/ingest/pipeline', () => {
   });
 
   it('parser failure marks job status=error and storage file is NOT deleted', async () => {
-    const m = setupMocks({ job: baseJob, parseShouldThrow: true });
+    const m = await setupMocks({ job: baseJob, parseShouldThrow: true });
     const storage = await import('@/lib/db/storage');
     const deleteSpy = storage.deleteFromIngestBucket as ReturnType<typeof vi.fn>;
     const { runPipeline } = await import('@/lib/ingest/pipeline');
@@ -170,7 +187,7 @@ describe('lib/ingest/pipeline', () => {
   });
 
   it('records article.metadata.parser=text-only-fallback when parser reports fallback', async () => {
-    const m = setupMocks({
+    const m = await setupMocks({
       job: baseJob,
       parser: 'text-only-fallback',
       parsed: { kind: 'text', text: 'Texto longo. '.repeat(80) },
@@ -182,7 +199,7 @@ describe('lib/ingest/pipeline', () => {
   });
 
   it('writes source_chars equal to the parsed text length on the new article row (text path)', async () => {
-    const m = setupMocks({
+    const m = await setupMocks({
       job: baseJob,
       parsed: { kind: 'text', text: 'Texto longo. '.repeat(80) },
       parser: 'text-only',
@@ -195,7 +212,7 @@ describe('lib/ingest/pipeline', () => {
   });
 
   it('dedup hit: existing article matched → status=done, chunks_count=0, no inserts', async () => {
-    const m = setupMocks({ job: baseJob, existingArticleId: 'existing-art-9' });
+    const m = await setupMocks({ job: baseJob, existingArticleId: 'existing-art-9' });
     const { runPipeline } = await import('@/lib/ingest/pipeline');
     await runPipeline('job-1');
     expect(m.insertedArticles).toHaveLength(0);
@@ -204,5 +221,27 @@ describe('lib/ingest/pipeline', () => {
     expect(finalUpdate.status).toBe('done');
     expect(finalUpdate.chunks_count).toBe(0);
     expect(finalUpdate.stage).toBe('deduplicated');
+  });
+
+  it('uses classifyContent.title/theme/summary on the article insert (dedup miss)', async () => {
+    const m = await setupMocks({
+      job: baseJob,
+      classifyTitle: 'Aplicação prática da matriz de Kraljic',
+      classifyTheme: 'Kraljic',
+      classifySummary: 'Caso aplicado a varejo de alimentos',
+    });
+    const { runPipeline } = await import('@/lib/ingest/pipeline');
+    await runPipeline('job-1');
+    const row = m.insertedArticles[0] as Record<string, unknown>;
+    expect(row.title).toBe('Aplicação prática da matriz de Kraljic');
+    expect(row.theme).toBe('Kraljic');
+    expect(row.summary).toBe('Caso aplicado a varejo de alimentos');
+  });
+
+  it('does NOT call classifyContent on dedup hit', async () => {
+    const m = await setupMocks({ job: baseJob, existingArticleId: 'existing-art-9' });
+    const { runPipeline } = await import('@/lib/ingest/pipeline');
+    await runPipeline('job-1');
+    expect(m.classifyContent).not.toHaveBeenCalled();
   });
 });

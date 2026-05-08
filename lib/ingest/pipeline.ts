@@ -4,6 +4,7 @@ import { parseSource } from '@/lib/ingest/parse-source';
 import { chunkText, chunkBlocks } from '@/lib/ingest/chunker';
 import { extractMetadata } from '@/lib/ingest/metadata';
 import { sha256 } from '@/lib/ingest/hash';
+import { classifyContent } from '@/lib/ingest/classify-content';
 import { embed } from '@/lib/llm/voyage';
 import type { ChunkRow } from '@/lib/ingest/types';
 
@@ -50,7 +51,8 @@ export async function runPipeline(jobId: string): Promise<void> {
             .map((b) => b.content)
             .join('\n\n');
 
-    const meta = extractMetadata(sourceText, job.filename);
+    // Dedup-first: compute hash before any LLM work so duplicate uploads
+    // never burn classify tokens.
     const hash = sha256(blob);
 
     const { data: existing } = await sb
@@ -72,10 +74,20 @@ export async function runPipeline(jobId: string): Promise<void> {
       return;
     }
 
+    // Dedup miss — classify first, then extract heuristic metadata.
+    await update({ stage: 'classifying', progress: 30 });
+    const classified = await classifyContent(sourceText, job.filename);
+
+    // extractMetadata still runs for author/language/date.
+    // meta.title is intentionally ignored — classified.title takes precedence.
+    const meta = extractMetadata(sourceText, job.filename);
+
     const { data: article, error: insArtErr } = await sb
       .from('articles')
       .insert({
-        title: meta.title,
+        title: classified.title,
+        theme: classified.theme,
+        summary: classified.summary,
         author: meta.author,
         language: meta.language,
         published_at: meta.date,
