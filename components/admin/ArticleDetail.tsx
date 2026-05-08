@@ -2,8 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { supabaseBrowser } from '@/lib/db/supabase-browser';
 import { ConfirmDelete } from '@/components/admin/ConfirmDelete';
+import { TAXONOMY, isValidTheme } from '@/lib/ingest/taxonomy';
+import { toast } from 'sonner';
 
 export type AdminArticle = {
   id: string;
@@ -45,6 +48,15 @@ export function ArticleDetail({ article, onDeleted, onUpdated }: Props) {
   const [loading, setLoading] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState(article?.title ?? '');
+  const [savingPatch, setSavingPatch] = useState(false);
+
+  useEffect(() => {
+    setTitleDraft(article?.title ?? '');
+    setEditingTitle(false);
+  }, [article?.id]);
+
   useEffect(() => {
     if (!article) {
       setChunks([]);
@@ -66,6 +78,25 @@ export function ArticleDetail({ article, onDeleted, onUpdated }: Props) {
       cancelled = true;
     };
   }, [article?.id]);
+
+  async function patchArticle(patch: { title?: string; theme?: string }) {
+    if (!article) return;
+    setSavingPatch(true);
+    try {
+      const res = await fetch(`/api/admin/articles/${article.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      });
+      if (!res.ok) throw new Error(`status ${res.status}`);
+      onUpdated?.(article.id, patch);
+      toast.success('Atualizado');
+    } catch (err) {
+      toast.error('Falha ao salvar', { description: String(err) });
+    } finally {
+      setSavingPatch(false);
+    }
+  }
 
   if (!article) {
     return (
@@ -91,8 +122,58 @@ export function ArticleDetail({ article, onDeleted, onUpdated }: Props) {
   return (
     <div className="p-4 space-y-3 overflow-y-auto h-full">
       <div>
-        <h3 className="text-sm font-semibold">{article.title}</h3>
-        <p className="text-xs text-muted-foreground">
+        {editingTitle ? (
+          <div className="flex gap-1.5 items-start">
+            <Input
+              value={titleDraft}
+              onChange={(e) => setTitleDraft(e.target.value)}
+              className="text-sm"
+              autoFocus
+            />
+            <Button
+              size="sm"
+              onClick={async () => {
+                const t = titleDraft.trim();
+                if (t.length < 3) {
+                  toast.error('Título precisa ter ao menos 3 caracteres');
+                  return;
+                }
+                await patchArticle({ title: t });
+                setEditingTitle(false);
+              }}
+              disabled={savingPatch}
+            >
+              Salvar
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setTitleDraft(article.title);
+                setEditingTitle(false);
+              }}
+            >
+              Cancelar
+            </Button>
+          </div>
+        ) : (
+          <div className="flex items-start gap-1.5">
+            <h3 className="text-sm font-semibold flex-1">{article.title}</h3>
+            <button
+              type="button"
+              aria-label="Editar título"
+              title="Editar título"
+              onClick={() => setEditingTitle(true)}
+              className="text-muted-foreground hover:text-foreground p-0.5"
+            >
+              ✎
+            </button>
+          </div>
+        )}
+        {article.summary && (
+          <p className="text-xs text-muted-foreground italic mt-1">{article.summary}</p>
+        )}
+        <p className="text-xs text-muted-foreground mt-1">
           {[article.author, article.language?.toUpperCase(), article.published_at, hash ? `SHA: ${hash.slice(0, 8)}…` : null]
             .filter(Boolean)
             .join(' · ')}
@@ -100,6 +181,21 @@ export function ArticleDetail({ article, onDeleted, onUpdated }: Props) {
         <p className="text-xs text-muted-foreground mt-1">
           {chunks.length} chunks · ≈{absorvedPct}% absorvido
         </p>
+        <div className="mt-2 flex items-center gap-2">
+          <label className="text-xs text-muted-foreground">Tema:</label>
+          <select
+            value={isValidTheme(article.theme) ? article.theme : 'Outros'}
+            onChange={(e) => patchArticle({ theme: e.target.value })}
+            disabled={savingPatch}
+            className="text-xs rounded border border-border bg-background px-2 py-1"
+          >
+            {TAXONOMY.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
       <div className="flex gap-2">
         <Button size="sm" variant="destructive" onClick={() => setConfirmOpen(true)}>
