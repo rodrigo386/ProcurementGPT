@@ -55,8 +55,6 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_MODEL: ${{ secrets.OPENAI_MODEL }}
-          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-          GEMINI_MODEL: ${{ secrets.GEMINI_MODEL }}
           VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
           VOYAGE_MODEL: ${{ secrets.VOYAGE_MODEL }}
           COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}

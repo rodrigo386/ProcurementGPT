@@ -1,7 +1,6 @@
 import { z } from 'zod';
 import type { Block } from '@/lib/ingest/types';
-import { getGemini } from '@/lib/llm/gemini';
-import { requireEnv } from '@/lib/env';
+import { getOpenAI, getOpenAIModel } from '@/lib/llm/openai';
 
 export const MULTIMODAL_SYSTEM_PROMPT = `Você é um extrator LITERAL de PDFs sobre procurement. Sua tarefa é
 TRANSCREVER o conteúdo do documento INTEGRALMENTE — NÃO RESUMA, NÃO
@@ -158,34 +157,71 @@ export function validateBlocks(raw: unknown): Block[] {
   return out;
 }
 
-const INLINE_LIMIT_BYTES = 20 * 1024 * 1024; // 20 MB
+// 20 MB base64-inlined cap. OpenAI accepts inline files up to ~32 MB via
+// `responses.create({ input_file.file_data })`, but we go via the Files API
+// above 20 MB to keep request bodies sane.
+const INLINE_LIMIT_BYTES = 20 * 1024 * 1024;
 const TIMEOUT_MS = 120_000;
+const MAX_OUTPUT_TOKENS = 32_768;
 
-type InlinePart = { inlineData: { mimeType: string; data: string } };
-type FilePart = { fileData: { fileUri: string; mimeType: string } };
-type PdfPart = InlinePart | FilePart;
+type InlineFilePart = { type: 'input_file'; filename: string; file_data: string };
+type RemoteFilePart = { type: 'input_file'; file_id: string };
+type PdfPart = InlineFilePart | RemoteFilePart;
 
-async function callGemini(
+async function callOpenAI(
   pdfPart: PdfPart,
   systemPrompt: string,
   signal: AbortSignal,
 ): Promise<string> {
-  const ai = getGemini();
-  const model = requireEnv('GEMINI_MODEL');
-  const res = await ai.models.generateContent({
-    model,
-    contents: [
-      pdfPart as never,
-      { text: systemPrompt } as never,
-    ] as never,
-    config: {
-      responseMimeType: 'application/json',
-      responseSchema: MULTIMODAL_RESPONSE_SCHEMA as never,
-      maxOutputTokens: 32_768,
-      abortSignal: signal,
+  const ai = getOpenAI();
+  const model = getOpenAIModel();
+  const res = await ai.responses.create(
+    {
+      model,
+      input: [
+        {
+          role: 'user',
+          content: [
+            { type: 'input_text', text: systemPrompt },
+            pdfPart as never,
+          ],
+        },
+      ],
+      text: { format: { type: 'json_object' } },
+      max_output_tokens: MAX_OUTPUT_TOKENS,
     },
-  });
-  return res.text ?? '';
+    { signal },
+  );
+  return res.output_text ?? '';
+}
+
+function inlinePart(buf: Buffer, filename = 'doc.pdf'): InlineFilePart {
+  return {
+    type: 'input_file',
+    filename,
+    file_data: `data:application/pdf;base64,${buf.toString('base64')}`,
+  };
+}
+
+async function tryWithRetry(
+  initialPart: PdfPart,
+  signal: AbortSignal,
+): Promise<Block[]> {
+  let raw = await callOpenAI(initialPart, MULTIMODAL_SYSTEM_PROMPT, signal);
+  try {
+    return validateBlocks(JSON.parse(raw));
+  } catch (firstErr) {
+    // Only retry on validation/JSON failures, not on network errors.
+    if (!(firstErr instanceof z.ZodError) && !(firstErr instanceof SyntaxError)) {
+      throw firstErr;
+    }
+    raw = await callOpenAI(
+      initialPart,
+      MULTIMODAL_SYSTEM_PROMPT + MULTIMODAL_RETRY_SUFFIX,
+      signal,
+    );
+    return validateBlocks(JSON.parse(raw));
+  }
 }
 
 export async function parsePdfMultimodal(
@@ -195,34 +231,11 @@ export async function parsePdfMultimodal(
     return parsePdfMultimodalViaFiles(buf);
   }
 
-  const part: InlinePart = {
-    inlineData: {
-      mimeType: 'application/pdf',
-      data: buf.toString('base64'),
-    },
-  };
-
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    let raw = '';
-    try {
-      raw = await callGemini(part, MULTIMODAL_SYSTEM_PROMPT, controller.signal);
-      const blocks = validateBlocks(JSON.parse(raw));
-      return { blocks };
-    } catch (firstErr) {
-      // Only retry on validation/JSON failures, not on network errors.
-      if (!(firstErr instanceof z.ZodError) && !(firstErr instanceof SyntaxError)) {
-        throw firstErr;
-      }
-      raw = await callGemini(
-        part,
-        MULTIMODAL_SYSTEM_PROMPT + MULTIMODAL_RETRY_SUFFIX,
-        controller.signal,
-      );
-      const blocks = validateBlocks(JSON.parse(raw));
-      return { blocks };
-    }
+    const blocks = await tryWithRetry(inlinePart(buf), controller.signal);
+    return { blocks };
   } finally {
     clearTimeout(timer);
   }
@@ -231,39 +244,24 @@ export async function parsePdfMultimodal(
 async function parsePdfMultimodalViaFiles(
   buf: Buffer,
 ): Promise<{ blocks: Block[]; pageCount?: number }> {
-  const ai = getGemini();
-  const uploaded = await ai.files.upload({
-    file: new Blob([buf as unknown as ArrayBuffer], { type: 'application/pdf' }),
-    config: { mimeType: 'application/pdf' },
+  const ai = getOpenAI();
+  const uploaded = await ai.files.create({
+    file: new File([buf as unknown as ArrayBuffer], 'doc.pdf', {
+      type: 'application/pdf',
+    }),
+    purpose: 'user_data',
   });
-  const fileUri = uploaded.name;
-  if (!fileUri) {
-    throw new Error('Gemini files.upload returned no name');
+  const fileId = uploaded.id;
+  if (!fileId) {
+    throw new Error('OpenAI files.create returned no id');
   }
-  const part: FilePart = {
-    fileData: {
-      fileUri,
-      mimeType: 'application/pdf',
-    },
-  };
+  const part: RemoteFilePart = { type: 'input_file', file_id: fileId };
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    try {
-      const raw = await callGemini(part, MULTIMODAL_SYSTEM_PROMPT, controller.signal);
-      return { blocks: validateBlocks(JSON.parse(raw)) };
-    } catch (firstErr) {
-      if (!(firstErr instanceof z.ZodError) && !(firstErr instanceof SyntaxError)) {
-        throw firstErr;
-      }
-      const raw = await callGemini(
-        part,
-        MULTIMODAL_SYSTEM_PROMPT + MULTIMODAL_RETRY_SUFFIX,
-        controller.signal,
-      );
-      return { blocks: validateBlocks(JSON.parse(raw)) };
-    }
+    const blocks = await tryWithRetry(part, controller.signal);
+    return { blocks };
   } finally {
     clearTimeout(timer);
   }

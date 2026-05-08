@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getServerSupabase } from '@/lib/db/supabase';
 import { embed } from '@/lib/llm/voyage';
 import { rerank } from '@/lib/llm/cohere';
-import { pingGemini } from '@/lib/llm/gemini';
+import { pingOpenAI } from '@/lib/llm/openai';
 
 export const runtime = 'edge';
 export const dynamic = 'force-dynamic';
@@ -28,14 +28,14 @@ async function checkSupabase(): Promise<CheckResult> {
 
 export async function GET() {
   const start = Date.now();
-  const [supabase, voyage, cohere, google] = await Promise.all([
+  const [supabase, voyage, cohere, openai] = await Promise.all([
     checkSupabase(),
     safe(() => embed(['hello'])),
     safe(() => rerank('a', ['b', 'c'], 1)),
-    safe(() => pingGemini()),
+    safe(() => pingOpenAI()),
   ]);
   const ms = Date.now() - start;
-  const checks = { supabase, voyage, cohere, google };
+  const checks = { supabase, voyage, cohere, openai };
   const ok = Object.values(checks).every((v) => v === 'ok');
   return NextResponse.json({ ok, checks, ms }, { status: ok ? 200 : 503 });
 }

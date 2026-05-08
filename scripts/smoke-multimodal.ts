@@ -15,8 +15,8 @@ async function main() {
   }
   const buf = readFileSync(path);
   console.log(`[smoke] file=${path} bytes=${buf.length}`);
-  console.log(`[smoke] GEMINI_MODEL=${process.env.GEMINI_MODEL}`);
-  console.log(`[smoke] GOOGLE_API_KEY present=${!!process.env.GOOGLE_API_KEY}`);
+  console.log(`[smoke] OPENAI_MODEL=${process.env.OPENAI_MODEL ?? 'gpt-4o-mini (default)'}`);
+  console.log(`[smoke] OPENAI_API_KEY present=${!!process.env.OPENAI_API_KEY}`);
   const t = Date.now();
   try {
     const out = await parsePdfMultimodal(buf);

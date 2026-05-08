@@ -9,9 +9,8 @@ removida em 2026-05-02). Audiência: gestores de compras brasileiros (PT-BR prim
 - Next.js 14 App Router + TypeScript strict
 - Tailwind + shadcn/ui (tema light/dark via `next-themes`)
 - Supabase (Postgres + pgvector + Auth + Storage)
-- OpenAI SDK (`openai` v5) — `gpt-4o-mini` (default) para classificador, condenser, follow-ups
+- OpenAI SDK (`openai` v6) — `gpt-4o-mini` (default) para classificador, condenser, follow-ups, e o `parsePdfMultimodal` (Responses API com `input_file` PDF base64; >20 MB usa Files API). Toda a stack LLM passou para OpenAI em 2026-05-08 (Gemini removido)
 - Vercel AI SDK (`ai` v4 + `@ai-sdk/openai`) — para o streaming SSE do endpoint de chat
-- Google Generative AI SDK (`@google/genai`) — Gemini 3.1 Flash Lite (preview) APENAS no `parsePdfMultimodal` (sub-projeto 12); OpenAI não aceita PDF nativo
 - Voyage AI para embeddings (`voyage-3-large`, 1024 dims)
 - Cohere Rerank 3 para reranking
 - Langfuse para observabilidade (sub-projeto 7)
@@ -23,7 +22,7 @@ removida em 2026-05-02). Audiência: gestores de compras brasileiros (PT-BR prim
 3. **Streaming SSE** — resposta começa a aparecer em <3s
 4. **Node runtime em `/api/chat`** (era Edge até sub-projeto 6; trocou em sub-projeto 7 porque a SDK do Langfuse usa APIs Node — `crypto`, `fs` — que falham silenciosamente no Edge e perdem traces). Outras rotas Edge quando possível; ingestão Python em Node.
 5. **LGPD compliance** — logs sem PII, opt-in para histórico (sub-projeto 6); Langfuse usa Supabase UUID pseudonimizado como `userId`, nunca email
-6. **Custos sob controle** — cache de embeddings, Gemini Flash Lite para todas as chamadas LLM
+6. **Custos sob controle** — cache de embeddings, `gpt-4o-mini` (OpenAI) para todas as chamadas LLM (chat, classifier, condenser, follow-ups, multimodal PDF parser)
 7. **Observabilidade obrigatória** — `/api/chat` abre uma Langfuse trace por turno; cada estágio do RAG é um span. Sem isto, retrieval e prompt iteram às cegas
 
 ## Status — sub-projetos completos
@@ -101,7 +100,7 @@ Roadmap completo em `docs/product/beta-readiness.md`. Roadmap B2B (Milestone 3+)
     supabase-browser.ts                 (cookie-aware client client; LITERAL process.env.NEXT_PUBLIC_*)
     supabase-server.ts                  (cookie-aware server client via next/headers)
   /llm
-    gemini.ts                           (one-shot wrapper, @google/genai)
+    openai.ts                           (getOpenAI singleton + getOpenAIModel + pingOpenAI; the only LLM wrapper since 2026-05-08)
     voyage.ts                           (embed com inputType opcional)
     cohere.ts                           (rerank wrapper)
   /observability                        (NEW sub-projeto 7)
@@ -116,7 +115,7 @@ Roadmap completo em `docs/product/beta-readiness.md`. Roadmap B2B (Milestone 3+)
     types.ts                            (JobStatus, JobStage, IngestJob, Block, ParsedSource, ChunkKind, ChunkRow)
     hash.ts                             (sha256 helper)
     parser.ts                           (parsePdfTextOnly + parseDocxTextOnly + parseTxt; parseFile @deprecated mime-dispatch wrapper)
-    multimodal-parse.ts                 (parsePdfMultimodal: Gemini multimodal, inline + Files API via ai.files.upload, zod retry, abort 120s)
+    multimodal-parse.ts                 (parsePdfMultimodal: OpenAI Responses API com input_file PDF base64; >20 MB usa Files API via ai.files.create, zod retry, abort 120s)
     docx-parse.ts                       (parseDocxWithTables: mammoth.convertToHtml + table extraction)
     html-table.ts                       (htmlTableToMarkdown utility)
     parse-source.ts                     (parseSource dispatcher: PDF→multimodal-with-fallback, DOCX→tables-aware, TXT→trivial)
@@ -181,8 +180,6 @@ para o usuário ler como uma explicação fluente.
 ```
 OPENAI_API_KEY=
 OPENAI_MODEL=gpt-4o-mini   # default em código se vazio
-GOOGLE_API_KEY=
-GEMINI_MODEL=gemini-3.1-flash-lite-preview
 VOYAGE_API_KEY=
 VOYAGE_MODEL=voyage-3-large
 COHERE_API_KEY=
@@ -250,10 +247,9 @@ APP_ENV=local                  # sub-projeto 8 — drives env:<value> tag in Lan
 - Tentar split em chunks de tabela ou figure — `chunkBlocks` deliberadamente não split tabela/figure mesmo se passar de 3200 chars. Tabela quebrada perde semântica; aceita-se chunk grande.
 - Awaitar response do `/api/admin/ingest/run/[jobId]` no cliente quando o pipeline está usando multimodal — a chamada multimodal pode levar 30-90s. Padrão fire-and-forget existente já cobre, mas qualquer mudança que introduza await vai bloquear UI.
 - Confiar em `keep_source` na tabela `ingestion_jobs` — não existe. Sub-projeto 12 deliberadamente NÃO adicionou. Se reprocessamento massivo virar dor, sub-projeto futuro adiciona migration + flag.
-- Em retries do Gemini multimodal: o retry só dispara em `z.ZodError` ou `SyntaxError`. Erros de rede / 5xx vão direto pro fallback texto-only no `parseSource` — não ficam looping.
+- Em retries do multimodal parser: o retry só dispara em `z.ZodError` ou `SyntaxError`. Erros de rede / 5xx vão direto pro fallback texto-only no `parseSource` — não ficam looping.
 - Esquecer que o `parser` field em `articles.metadata` é o sinal de auditoria — quando todo PDF está caindo em `text-only-fallback`, o multimodal está com problema; investigar antes de assumir que o gain de tabelas/figuras está chegando.
-- Confundir SDK do `@google/genai`: o método de upload é `ai.files.upload({ file: Blob, config: { mimeType } })` — NÃO `ai.files.create`. Mock antigo usava `create` e o teste passava, mas em produção quebra com TypeError. Verificar tipos no `node_modules/@google/genai/dist/node/node.d.ts` se houver dúvida.
-- Usar `getGemini()` em código novo de RAG, chat ou classificação — sempre `getOpenAI()` (`lib/llm/openai.ts`). O wrapper Gemini sobrevive APENAS em `lib/ingest/multimodal-parse.ts` porque OpenAI não aceita PDF nativo (multimodal exigiria render PDF→PNG via deps com bindings nativos, frágil em Railway).
+- Reintroduzir `@google/genai` ou `getGemini()` em código novo — toda a stack é OpenAI desde 2026-05-08. Multimodal PDF passa por `openai.responses.create` com `{ type: 'input_file', file_data: 'data:application/pdf;base64,...' }` (>20 MB usa Files API com `purpose: 'user_data'`).
 - Esquecer `OPENAI_API_KEY` no Railway env quando deployar — todo o `/api/chat` quebra (sem fallback).
 - Esquecer `OPENAI_API_KEY` nos GitHub Actions secrets — CI vai falhar no `RAG eval`.
 - Atualizar `@ai-sdk/openai` pra `^2.x` ou `^3.x` sem subir `ai` pra `^5.x` — a major contém troca do contrato `LanguageModelV1` → `LanguageModelV3` e quebra typecheck no `streamText`. Se for atualizar, faça os dois juntos.

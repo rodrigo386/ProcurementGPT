@@ -5,12 +5,12 @@ vi.mock('@/lib/db/supabase', () => ({
 }));
 vi.mock('@/lib/llm/voyage', () => ({ embed: vi.fn() }));
 vi.mock('@/lib/llm/cohere', () => ({ rerank: vi.fn() }));
-vi.mock('@/lib/llm/gemini', () => ({ pingGemini: vi.fn() }));
+vi.mock('@/lib/llm/openai', () => ({ pingOpenAI: vi.fn() }));
 
 import { getServerSupabase } from '@/lib/db/supabase';
 import { embed } from '@/lib/llm/voyage';
 import { rerank } from '@/lib/llm/cohere';
-import { pingGemini } from '@/lib/llm/gemini';
+import { pingOpenAI } from '@/lib/llm/openai';
 import { GET } from '@/app/api/health/route';
 
 describe('GET /api/health', () => {
@@ -22,7 +22,7 @@ describe('GET /api/health', () => {
     } as never);
     vi.mocked(embed).mockResolvedValue([[0.1]]);
     vi.mocked(rerank).mockResolvedValue([{ index: 0, relevanceScore: 1 }]);
-    vi.mocked(pingGemini).mockResolvedValue('pong');
+    vi.mocked(pingOpenAI).mockResolvedValue('pong');
   });
 
   it('returns 200 with all checks ok when every dependency succeeds', async () => {
@@ -34,7 +34,7 @@ describe('GET /api/health', () => {
       supabase: 'ok',
       voyage: 'ok',
       cohere: 'ok',
-      google: 'ok',
+      openai: 'ok',
     });
     expect(typeof body.ms).toBe('number');
   });
