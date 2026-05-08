@@ -66,8 +66,21 @@ const RawFigureBlock = z.object({
   page: z.number().int().min(1),
   description: z.string().optional(),
   caption: z.string().optional(),
-  figureKind: z.enum(['flow', 'chart', 'diagram']).optional(),
+  // Lenient: gpt-4o-mini occasionally emits values outside the prompt's
+  // enum (most commonly `'table'` for a figure that contains a table).
+  // We accept any string here and coerce invalid values to `'diagram'`
+  // in validateBlocks() rather than failing the whole batch.
+  figureKind: z.string().optional(),
 });
+
+const VALID_FIGURE_KINDS = ['flow', 'chart', 'diagram'] as const;
+type ValidFigureKind = (typeof VALID_FIGURE_KINDS)[number];
+function coerceFigureKind(raw: string | undefined): ValidFigureKind {
+  if (raw && (VALID_FIGURE_KINDS as readonly string[]).includes(raw)) {
+    return raw as ValidFigureKind;
+  }
+  return 'diagram';
+}
 
 const RawBlockSchema = z.discriminatedUnion('type', [
   RawTextBlock,
@@ -140,7 +153,7 @@ export function validateBlocks(raw: unknown): Block[] {
     // figure
     const description = b.description?.trim();
     const caption = b.caption?.trim();
-    const figureKind = b.figureKind ?? 'diagram';
+    const figureKind = coerceFigureKind(b.figureKind);
     // Drop figures with no description AND no caption — nothing to embed.
     if (!description && !caption) continue;
     out.push({
@@ -157,18 +170,37 @@ export function validateBlocks(raw: unknown): Block[] {
   return out;
 }
 
-// 20 MB base64-inlined cap. OpenAI accepts inline files up to ~32 MB via
-// `responses.create({ input_file.file_data })`, but we go via the Files API
-// above 20 MB to keep request bodies sane.
-const INLINE_LIMIT_BYTES = 20 * 1024 * 1024;
-const TIMEOUT_MS = 120_000;
+// Route anything ≥10 MB through Files API. Inline base64 inflates the body
+// ~33% (12 MB PDF → ~16 MB string) plus JSON overhead, and we observed
+// gpt-4o-mini taking >120s on visually-dense 12 MB ebooks delivered inline.
+// Files API uploads once and references by ID, halving per-request weight.
+const INLINE_LIMIT_BYTES = 10 * 1024 * 1024;
+// 5 minutes. gpt-4o-mini can take 60–180s on large image-heavy PDFs (40+
+// pages, lots of figures). Previous 120s aborted real successful runs in the
+// middle. The pipeline is fire-and-forget on Railway so the wait does not
+// block the admin UI.
+const TIMEOUT_MS = 300_000;
 const MAX_OUTPUT_TOKENS = 32_768;
 
 type InlineFilePart = { type: 'input_file'; filename: string; file_data: string };
 type RemoteFilePart = { type: 'input_file'; file_id: string };
 type PdfPart = InlineFilePart | RemoteFilePart;
 
-async function callOpenAI(
+// Parse the "Please try again in Xs" hint from a 429 RateLimitError. Falls
+// back to 5s when the message shape changes.
+function rateLimitWaitMs(err: unknown): number {
+  const msg = err instanceof Error ? err.message : '';
+  const m = msg.match(/try again in ([0-9.]+)s/i);
+  const secs = m ? Number(m[1]) : NaN;
+  return Number.isFinite(secs) ? Math.ceil(secs * 1000) + 500 : 5_000;
+}
+
+function isRateLimit(err: unknown): boolean {
+  const e = err as { status?: number; code?: string } | null;
+  return e?.status === 429 || e?.code === 'rate_limit_exceeded';
+}
+
+async function rawCallOpenAI(
   pdfPart: PdfPart,
   systemPrompt: string,
   signal: AbortSignal,
@@ -193,6 +225,29 @@ async function callOpenAI(
     { signal },
   );
   return res.output_text ?? '';
+}
+
+async function callOpenAI(
+  pdfPart: PdfPart,
+  systemPrompt: string,
+  signal: AbortSignal,
+): Promise<string> {
+  // Retry once on 429 (TPM rate limit). The 200k tok/min default tier is
+  // easy to saturate when admin uploads several PDFs back-to-back; OpenAI
+  // tells us when to retry, so we honor it. One retry is enough — if a
+  // second 429 lands, the caller falls back to text-only.
+  try {
+    return await rawCallOpenAI(pdfPart, systemPrompt, signal);
+  } catch (err) {
+    if (!isRateLimit(err)) throw err;
+    const waitMs = rateLimitWaitMs(err);
+    console.warn(
+      `[ingest/multimodal] 429 rate limit; waiting ${waitMs}ms before single retry`,
+    );
+    await new Promise((r) => setTimeout(r, waitMs));
+    if (signal.aborted) throw err;
+    return await rawCallOpenAI(pdfPart, systemPrompt, signal);
+  }
 }
 
 function inlinePart(buf: Buffer, filename = 'doc.pdf'): InlineFilePart {

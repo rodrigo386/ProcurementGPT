@@ -56,15 +56,15 @@ describe('parseSource', () => {
     expect(m.textOnly).toHaveBeenCalledTimes(1);
   });
 
-  it('PDF double failure: both multimodal and text-only throw → propagates text-only error', async () => {
+  it('PDF double failure: both multimodal and text-only throw → propagates BOTH so the multimodal cause survives in error_message', async () => {
     setupParserMocks({
-      multimodalThrows: new Error('gemini boom'),
+      multimodalThrows: new Error('openai boom'),
       textOnlyThrows: new Error('OCR necessário'),
     });
     const { parseSource } = await import('@/lib/ingest/parse-source');
     await expect(
       parseSource(Buffer.from('x'), 'application/pdf', 'a.pdf'),
-    ).rejects.toThrow(/OCR/);
+    ).rejects.toThrow(/OCR.*Multimodal.*openai boom/);
   });
 
   it('DOCX path: calls parseDocxWithTables, parser=docx-tables', async () => {

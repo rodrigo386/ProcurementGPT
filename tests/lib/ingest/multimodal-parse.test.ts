@@ -61,12 +61,32 @@ describe('validateBlocks', () => {
     expect(() => validateBlocks({ blocks: [{ type: 'bogus', page: 1 }] })).toThrow();
   });
 
-  it('defaults figureKind to "diagram" when Gemini omits it', () => {
+  it('defaults figureKind to "diagram" when the model omits it', () => {
     const out = validateBlocks({
       blocks: [{ type: 'figure', page: 1, description: 'a long enough description here' }],
     });
     expect(out).toHaveLength(1);
     const fig = out[0] as Extract<typeof out[number], { type: 'figure' }>;
+    expect(fig.figureKind).toBe('diagram');
+  });
+
+  it('coerces an out-of-enum figureKind to "diagram" instead of dropping the whole batch', () => {
+    // gpt-4o-mini sometimes emits figureKind="table" when a figure contains
+    // a tabular layout. Don't lose the rest of the blocks because of that.
+    const out = validateBlocks({
+      blocks: [
+        { type: 'text', page: 1, content: 'preamble' },
+        {
+          type: 'figure',
+          page: 2,
+          description: 'a figure that the model labelled as kind=table',
+          figureKind: 'table',
+        },
+        { type: 'text', page: 3, content: 'closer' },
+      ],
+    });
+    expect(out).toHaveLength(3);
+    const fig = out[1] as Extract<typeof out[number], { type: 'figure' }>;
     expect(fig.figureKind).toBe('diagram');
   });
 

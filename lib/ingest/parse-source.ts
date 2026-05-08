@@ -25,16 +25,28 @@ export async function parseSource(
         parsed: { kind: 'blocks', blocks: out.blocks, pageCount: out.pageCount },
         parser: 'multimodal',
       };
-    } catch (err) {
+    } catch (mmErr) {
+      const mmMsg = mmErr instanceof Error ? mmErr.message : String(mmErr);
       console.warn(
         `[ingest/parse-source] multimodal failed for ${filename}; falling back to text-only:`,
-        err instanceof Error ? err.message : String(err),
+        mmMsg,
       );
-      const fallback = await parsePdfTextOnly(buf);
-      return {
-        parsed: { kind: 'text', text: fallback.text, pageCount: fallback.pageCount },
-        parser: 'text-only-fallback',
-      };
+      try {
+        const fallback = await parsePdfTextOnly(buf);
+        return {
+          parsed: { kind: 'text', text: fallback.text, pageCount: fallback.pageCount },
+          parser: 'text-only-fallback',
+        };
+      } catch (textErr) {
+        const textMsg = textErr instanceof Error ? textErr.message : String(textErr);
+        // Both paths failed — surface BOTH errors so the user sees the actual
+        // multimodal failure (which is usually the load-bearing one) instead of
+        // just the text-only guard. The text-only guard fires for image-only
+        // PDFs as a downstream symptom, not as the root cause.
+        throw new Error(
+          `${textMsg} | Multimodal também falhou: ${mmMsg}`,
+        );
+      }
     }
   }
 
