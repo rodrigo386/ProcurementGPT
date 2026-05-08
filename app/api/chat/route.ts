@@ -97,13 +97,31 @@ export async function POST(req: Request): Promise<Response> {
       model: openai(process.env.OPENAI_MODEL ?? 'gpt-4o-mini'),
       system: rag.system,
       messages: llmMessages,
-      onFinish: async ({ text, usage, finishReason }) => {
+      onFinish: async ({ text, usage, finishReason, providerMetadata }) => {
+        // OpenAI's automatic prompt caching exposes `cached_tokens` via
+        // providerMetadata (the AI SDK pulls it from
+        // `usage.prompt_tokens_details.cached_tokens`). Log it on the span so
+        // we can see hit rate per turn in Langfuse, and tag the trace for
+        // easy filtering. Cached tokens cost 50% less, so this is the
+        // signal we use to gauge whether prompt restructuring paid off.
+        const cachedPromptTokens = (() => {
+          const v = providerMetadata?.openai?.cachedPromptTokens;
+          return typeof v === 'number' ? v : 0;
+        })();
+        const cachedPct =
+          usage.promptTokens > 0
+            ? Math.round((cachedPromptTokens / usage.promptTokens) * 100)
+            : 0;
+
         generateSpan.end({
           tokens_in: usage.promptTokens,
           tokens_out: usage.completionTokens,
+          tokens_cached: cachedPromptTokens,
+          cached_pct: cachedPct,
           finish_reason: finishReason,
           chars_out: text.length,
         });
+        trace.setTag(cachedPromptTokens > 0 ? 'cache:hit' : 'cache:miss');
         const aborted = finishReason === 'error';
         const level: TraceLevel = aborted ? 'WARNING' : 'DEFAULT';
         if (aborted) trace.setTag('aborted');

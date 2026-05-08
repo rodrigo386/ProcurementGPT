@@ -282,12 +282,16 @@ describe('POST /api/chat — followups annotation', () => {
     text: string;
     usage: { promptTokens: number; completionTokens: number };
     finishReason: string;
+    providerMetadata?: { openai?: { cachedPromptTokens?: number } };
   };
+
+  type SpanCaptured = { name: string; output: Record<string, unknown> };
 
   function setupCommonMocks(opts: {
     chunks: unknown[];
     suggestSpy?: ReturnType<typeof vi.fn>;
     traceTags?: string[];
+    spans?: SpanCaptured[];
   }) {
     vi.doMock('@/lib/auth', () => ({ getCurrentUser: vi.fn().mockResolvedValue({ id: 'u' }) }));
     vi.doMock('@/lib/rate-limit', () => ({
@@ -295,7 +299,11 @@ describe('POST /api/chat — followups annotation', () => {
     }));
     const trace = {
       id: 't',
-      span: vi.fn(() => ({ end: vi.fn() })),
+      span: vi.fn((name: string) => ({
+        end: vi.fn((output?: unknown) => {
+          opts.spans?.push({ name, output: (output ?? {}) as Record<string, unknown> });
+        }),
+      })),
       end: vi.fn(),
       setMetadata: vi.fn(),
       setTag: vi.fn((t: string) => opts.traceTags?.push(t)),
@@ -461,5 +469,84 @@ describe('POST /api/chat — followups annotation', () => {
     });
 
     expect(suggestSpy).not.toHaveBeenCalled();
+  });
+
+  it('logs cachedPromptTokens + cached_pct on generate span and tags trace cache:hit when OpenAI reports a cache hit', async () => {
+    const traceTags: string[] = [];
+    const spans: SpanCaptured[] = [];
+    setupCommonMocks({
+      chunks: [],
+      suggestSpy: vi.fn().mockResolvedValue([]),
+      traceTags,
+      spans,
+    });
+
+    const onFinishCapture: { fn?: (a: OnFinishArg) => Promise<void> } = {};
+    vi.doMock('ai', () => ({
+      streamText: vi.fn((cfg: { onFinish?: (a: OnFinishArg) => Promise<void> }) => {
+        onFinishCapture.fn = cfg.onFinish;
+        return { toDataStreamResponse: vi.fn(() => new Response('ok', { status: 200 })) };
+      }),
+      StreamData: class {
+        appendMessageAnnotation = vi.fn();
+        close = vi.fn();
+      },
+    }));
+    vi.doMock('@ai-sdk/openai', () => ({ createOpenAI: vi.fn(() => () => 'm') }));
+
+    const { POST } = await import('@/app/api/chat/route');
+    await POST(makeReq({ messages: [{ role: 'user', content: 'oi' }] }));
+    await onFinishCapture.fn!({
+      text: 'resposta longa o suficiente para ser processada',
+      usage: { promptTokens: 1000, completionTokens: 200 },
+      finishReason: 'stop',
+      providerMetadata: { openai: { cachedPromptTokens: 400 } },
+    });
+
+    expect(traceTags).toContain('cache:hit');
+    expect(traceTags).not.toContain('cache:miss');
+    const generate = spans.find((s) => s.name === 'generate');
+    expect(generate?.output.tokens_cached).toBe(400);
+    expect(generate?.output.cached_pct).toBe(40);
+    expect(generate?.output.tokens_in).toBe(1000);
+  });
+
+  it('tags trace cache:miss and records tokens_cached=0 when providerMetadata is absent (cold prompt)', async () => {
+    const traceTags: string[] = [];
+    const spans: SpanCaptured[] = [];
+    setupCommonMocks({
+      chunks: [],
+      suggestSpy: vi.fn().mockResolvedValue([]),
+      traceTags,
+      spans,
+    });
+
+    const onFinishCapture: { fn?: (a: OnFinishArg) => Promise<void> } = {};
+    vi.doMock('ai', () => ({
+      streamText: vi.fn((cfg: { onFinish?: (a: OnFinishArg) => Promise<void> }) => {
+        onFinishCapture.fn = cfg.onFinish;
+        return { toDataStreamResponse: vi.fn(() => new Response('ok', { status: 200 })) };
+      }),
+      StreamData: class {
+        appendMessageAnnotation = vi.fn();
+        close = vi.fn();
+      },
+    }));
+    vi.doMock('@ai-sdk/openai', () => ({ createOpenAI: vi.fn(() => () => 'm') }));
+
+    const { POST } = await import('@/app/api/chat/route');
+    await POST(makeReq({ messages: [{ role: 'user', content: 'oi' }] }));
+    await onFinishCapture.fn!({
+      text: 'resposta longa o suficiente para ser processada',
+      usage: { promptTokens: 800, completionTokens: 100 },
+      finishReason: 'stop',
+      // No providerMetadata — simulates a cold prompt under the 1024 token threshold
+    });
+
+    expect(traceTags).toContain('cache:miss');
+    expect(traceTags).not.toContain('cache:hit');
+    const generate = spans.find((s) => s.name === 'generate');
+    expect(generate?.output.tokens_cached).toBe(0);
+    expect(generate?.output.cached_pct).toBe(0);
   });
 });
