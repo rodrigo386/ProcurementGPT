@@ -21,6 +21,14 @@ describe('multimodal-parse — prompt and schema', () => {
     expect(MULTIMODAL_SYSTEM_PROMPT).toMatch(/diagram/);
   });
 
+  it('system prompt explicitly forbids summarization (anti-Flash-Lite-summarize regression)', () => {
+    // Without these, Gemini Flash Lite collapses long PDFs into 2-3 summary
+    // blocks. See incident 2026-05-08 — 40-page ebook → 4.8k chars / 2 chunks.
+    expect(MULTIMODAL_SYSTEM_PROMPT).toMatch(/N[ÃA]O\s+RESUMA/);
+    expect(MULTIMODAL_SYSTEM_PROMPT).toMatch(/transcreva|transcrever/i);
+    expect(MULTIMODAL_SYSTEM_PROMPT).toMatch(/N[ÃA]O\s+(consolide|sintetize|comprima)/i);
+  });
+
   it('response schema is an object with required blocks array', () => {
     expect(MULTIMODAL_RESPONSE_SCHEMA.type).toBe('object');
     expect(MULTIMODAL_RESPONSE_SCHEMA.required).toContain('blocks');

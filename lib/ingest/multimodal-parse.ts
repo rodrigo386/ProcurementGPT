@@ -3,11 +3,19 @@ import type { Block } from '@/lib/ingest/types';
 import { getGemini } from '@/lib/llm/gemini';
 import { requireEnv } from '@/lib/env';
 
-export const MULTIMODAL_SYSTEM_PROMPT = `Você é um extrator estruturado de artigos acadêmicos sobre procurement.
-Receba o PDF e retorne um array de blocos representando o conteúdo do
-documento NA ORDEM EM QUE APARECE. Cada bloco é um de três tipos:
+export const MULTIMODAL_SYSTEM_PROMPT = `Você é um extrator LITERAL de PDFs sobre procurement. Sua tarefa é
+TRANSCREVER o conteúdo do documento INTEGRALMENTE — NÃO RESUMA, NÃO
+PARAFRASEIE, NÃO CONDENSE, NÃO PULE PARÁGRAFOS. A saída tem que
+preservar o volume e o vocabulário do PDF original.
 
-- text: parágrafo ou seção corrida. Junte parágrafos relacionados.
+Retorne um array de blocos representando o documento NA ORDEM em que
+aparecem. Cada bloco é um de três tipos:
+
+- text: UM parágrafo de prosa corrida do PDF. Cada parágrafo do
+  documento vira UM bloco text separado — NÃO consolide múltiplos
+  parágrafos no mesmo bloco. Bullets e itens de lista contam como
+  parágrafos curtos (um bloco por item). Transcreva o texto LITERAL,
+  palavra por palavra, sem reescrever.
 - table: qualquer tabela. Devolva o conteúdo como Markdown bem formado
   (linhas separadas por |, header divider com ---). Capture a legenda
   da tabela (ex: "Tabela 2: Matriz de Kraljic") em "caption".
@@ -19,12 +27,22 @@ documento NA ORDEM EM QUE APARECE. Cada bloco é um de três tipos:
   de: "flow" (fluxograma, processo), "chart" (gráfico com dados),
   "diagram" (diagrama conceitual sem dados).
 
-Regras:
+Regras de completude (CRÍTICAS):
+- A saída TEM que refletir o volume real do PDF. Documento de 40
+  páginas produz dezenas de blocos, não 2 ou 3. Documento de 5 páginas
+  produz vários blocos por página. PDF longo → resposta longa.
+- NÃO sintetize, NÃO comprima, NÃO "junte ideias parecidas". Cada
+  parágrafo do PDF tem que sair como bloco separado, transcrito
+  integralmente.
+- "page" é o número REAL da página (1-indexed) onde o bloco começa.
+  É esperado e correto que MUITOS blocos compartilhem a mesma página.
+  NÃO marque tudo como "page 1" ou "page 2" para economizar saída.
+
+Regras de filtragem:
 - NÃO invente conteúdo. Se uma figura é ilegível, descreva o que vê
   ("gráfico de barras com 5 categorias, valores não legíveis").
 - NÃO inclua headers/footers/numeração de página repetidos.
 - NÃO inclua TOC (sumário).
-- Page é o número da página (1-indexed) onde o bloco começa.
 - Output JSON estrito conforme schema.`;
 
 export const MULTIMODAL_RETRY_SUFFIX = `\n\nSua resposta anterior não bateu com o schema. Retorne EXATAMENTE este shape JSON: { "blocks": [ ... ] } onde cada bloco tem "type" igual a "text" | "table" | "figure" e os campos obrigatórios descritos acima.`;
