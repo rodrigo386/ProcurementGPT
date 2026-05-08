@@ -151,6 +151,8 @@ function setupOpenAIMock(responses: Array<{ text?: string; throws?: Error }>) {
       files: { create: filesCreate },
     }),
     getOpenAIModel: vi.fn().mockReturnValue('gpt-4o-mini'),
+    // Tests run in deterministic mode — pass through, no retry behavior.
+    withRateLimitRetry: <T>(fn: () => Promise<T>) => fn(),
   }));
   return { responsesCreate, filesCreate };
 }
@@ -257,6 +259,7 @@ describe('parsePdfMultimodal — Files API (>20MB)', () => {
         files: { create: filesCreate },
       }),
       getOpenAIModel: vi.fn().mockReturnValue('gpt-4o-mini'),
+      withRateLimitRetry: <T>(fn: () => Promise<T>) => fn(),
     }));
     const { parsePdfMultimodal } = await import('@/lib/ingest/multimodal-parse');
     const big = Buffer.alloc(21 * 1024 * 1024, 0x42);

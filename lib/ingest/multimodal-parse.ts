@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { Block } from '@/lib/ingest/types';
-import { getOpenAI, getOpenAIModel } from '@/lib/llm/openai';
+import { getOpenAI, getOpenAIModel, withRateLimitRetry } from '@/lib/llm/openai';
 
 export const MULTIMODAL_SYSTEM_PROMPT = `Você é um extrator LITERAL de PDFs sobre procurement. Sua tarefa é
 TRANSCREVER o conteúdo do documento INTEGRALMENTE — NÃO RESUMA, NÃO
@@ -186,68 +186,37 @@ type InlineFilePart = { type: 'input_file'; filename: string; file_data: string 
 type RemoteFilePart = { type: 'input_file'; file_id: string };
 type PdfPart = InlineFilePart | RemoteFilePart;
 
-// Parse the "Please try again in Xs" hint from a 429 RateLimitError. Falls
-// back to 5s when the message shape changes.
-function rateLimitWaitMs(err: unknown): number {
-  const msg = err instanceof Error ? err.message : '';
-  const m = msg.match(/try again in ([0-9.]+)s/i);
-  const secs = m ? Number(m[1]) : NaN;
-  return Number.isFinite(secs) ? Math.ceil(secs * 1000) + 500 : 5_000;
-}
-
-function isRateLimit(err: unknown): boolean {
-  const e = err as { status?: number; code?: string } | null;
-  return e?.status === 429 || e?.code === 'rate_limit_exceeded';
-}
-
-async function rawCallOpenAI(
+async function callOpenAI(
   pdfPart: PdfPart,
   systemPrompt: string,
   signal: AbortSignal,
 ): Promise<string> {
   const ai = getOpenAI();
   const model = getOpenAIModel();
-  const res = await ai.responses.create(
-    {
-      model,
-      input: [
+  return withRateLimitRetry(
+    async () => {
+      const res = await ai.responses.create(
         {
-          role: 'user',
-          content: [
-            { type: 'input_text', text: systemPrompt },
-            pdfPart as never,
+          model,
+          input: [
+            {
+              role: 'user',
+              content: [
+                { type: 'input_text', text: systemPrompt },
+                pdfPart as never,
+              ],
+            },
           ],
+          text: { format: { type: 'json_object' } },
+          max_output_tokens: MAX_OUTPUT_TOKENS,
         },
-      ],
-      text: { format: { type: 'json_object' } },
-      max_output_tokens: MAX_OUTPUT_TOKENS,
+        { signal },
+      );
+      return res.output_text ?? '';
     },
-    { signal },
+    signal,
+    'ingest/multimodal',
   );
-  return res.output_text ?? '';
-}
-
-async function callOpenAI(
-  pdfPart: PdfPart,
-  systemPrompt: string,
-  signal: AbortSignal,
-): Promise<string> {
-  // Retry once on 429 (TPM rate limit). The 200k tok/min default tier is
-  // easy to saturate when admin uploads several PDFs back-to-back; OpenAI
-  // tells us when to retry, so we honor it. One retry is enough — if a
-  // second 429 lands, the caller falls back to text-only.
-  try {
-    return await rawCallOpenAI(pdfPart, systemPrompt, signal);
-  } catch (err) {
-    if (!isRateLimit(err)) throw err;
-    const waitMs = rateLimitWaitMs(err);
-    console.warn(
-      `[ingest/multimodal] 429 rate limit; waiting ${waitMs}ms before single retry`,
-    );
-    await new Promise((r) => setTimeout(r, waitMs));
-    if (signal.aborted) throw err;
-    return await rawCallOpenAI(pdfPart, systemPrompt, signal);
-  }
 }
 
 function inlinePart(buf: Buffer, filename = 'doc.pdf'): InlineFilePart {

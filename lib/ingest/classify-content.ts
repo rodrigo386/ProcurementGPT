@@ -1,8 +1,10 @@
 import { z } from 'zod';
-import { getOpenAI, getOpenAIModel } from '@/lib/llm/openai';
+import { getOpenAI, getOpenAIModel, withRateLimitRetry } from '@/lib/llm/openai';
 import { TAXONOMY, THEME_DESCRIPTIONS, isValidTheme, type Theme } from '@/lib/ingest/taxonomy';
 
-const TIMEOUT_MS = 15_000;
+// Bumped from 15s to 45s to absorb the 429 retry's wait (OpenAI tells us "try
+// again in Xs" up to ~30s under TPM saturation) without aborting mid-retry.
+const TIMEOUT_MS = 45_000;
 const MAX_INPUT_CHARS = 6000;
 
 const ClassifyResultSchema = z.object({
@@ -62,17 +64,22 @@ export async function classifyContent(
 
   try {
     const ai = getOpenAI();
-    const res = await ai.chat.completions.create(
-      {
-        model: getOpenAIModel(),
-        messages: [
-          { role: 'system', content: buildSystemPrompt() },
-          { role: 'user', content: truncated },
-        ],
-        response_format: { type: 'json_object' },
-        max_completion_tokens: 400,
-      },
-      { signal: controller.signal },
+    const res = await withRateLimitRetry(
+      () =>
+        ai.chat.completions.create(
+          {
+            model: getOpenAIModel(),
+            messages: [
+              { role: 'system', content: buildSystemPrompt() },
+              { role: 'user', content: truncated },
+            ],
+            response_format: { type: 'json_object' },
+            max_completion_tokens: 400,
+          },
+          { signal: controller.signal },
+        ),
+      controller.signal,
+      'ingest/classify',
     );
 
     const raw = res.choices[0]?.message?.content ?? '';

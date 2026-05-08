@@ -21,6 +21,8 @@ function setupOpenAIMock(opts: { content?: string; throws?: Error; delayMs?: num
   vi.doMock('@/lib/llm/openai', () => ({
     getOpenAI: () => ({ chat: { completions: { create } } }),
     getOpenAIModel: () => 'gpt-4o-mini',
+    // Tests run in deterministic mode — pass through, no retry behavior.
+    withRateLimitRetry: <T>(fn: () => Promise<T>) => fn(),
   }));
   return { create };
 }
@@ -133,11 +135,12 @@ describe('classifyContent', () => {
     try {
       setupOpenAIMock({
         content: JSON.stringify({ title: 'Título OK aqui com chars', theme: 'Kraljic', summary: '' }),
-        delayMs: 60_000,
+        delayMs: 90_000,
       });
       const { classifyContent } = await import('@/lib/ingest/classify-content');
       const promise = classifyContent('texto', 'foo.pdf');
-      vi.advanceTimersByTime(20_000);
+      // Timeout is 45s; advance well past it to trip the abort
+      vi.advanceTimersByTime(60_000);
       const out = await promise;
       expect(out.theme).toBe('Outros');
       expect(out.title).toBe('foo');
